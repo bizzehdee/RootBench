@@ -72,6 +72,7 @@ SOURCES  = \
 	$(SRCDIR)/Tui.cpp \
 	$(SRCDIR)/CpuFeatures.cpp \
 	$(SRCDIR)/BigBuffer.cpp \
+	$(SRCDIR)/VideoEngine.cpp \
 	$(BMDIR)/CpuBenchmark.cpp \
 	$(BMDIR)/MemoryBenchmark.cpp \
 	$(BMDIR)/PiBenchmark.cpp \
@@ -210,6 +211,9 @@ endif
 # ── Per-file ISA overrides ────────────────────────────────────
 # Only these files get the extended ISA flags; all other files remain SSE2-only
 # so that AVX/AES instructions cannot appear before EnableAvxState() is called.
+
+$(BUILDDIR)/VideoEngine.o: $(SRCDIR)/VideoEngine.cpp | $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) -mavx2 -c -o $@ $<
 
 $(BUILDDIR)/FpVectorBenchmark.o: $(BMDIR)/FpVectorBenchmark.cpp | $(BUILDDIR)
 	$(CXX) $(CXXFLAGS) -mavx2 -mfma -c -o $@ $<

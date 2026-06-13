@@ -5,8 +5,9 @@
 
 namespace CpuFeatures {
 
-static Features sFeatures = {};
-static bool     sDetected = false;
+static Features sFeatures    = {};
+static bool     sDetected    = false;
+static bool     sAvxEnabled  = false;
 
 // Raw CPUID wrapper (serialising fence via CPUID itself).
 static void Cpuid(UINT32 leaf, UINT32 subleaf,
@@ -69,7 +70,10 @@ bool EnableAvxState() {
     // Enable x87 (bit 0) + SSE (bit 1) + AVX (bit 2) in XCR0
     asm volatile("xsetbv" : : "c"(0U), "a"(7U), "d"(0U) : "memory");
 
+    sAvxEnabled = true;
     return true;
 }
+
+bool IsAvxEnabled() { return sAvxEnabled; }
 
 } // namespace CpuFeatures

@@ -34,4 +34,8 @@ const Features& Get();
 // Returns true on success; false if the CPU lacks XSAVE or AVX support.
 bool EnableAvxState();
 
+// Returns true if EnableAvxState() has been successfully called on this BSP.
+// Used by VideoEngine to decide whether the AVX2 blit path is safe to execute.
+bool IsAvxEnabled();
+
 } // namespace CpuFeatures

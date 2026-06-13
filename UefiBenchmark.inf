@@ -26,6 +26,7 @@
   Source/Tui.cpp
   Source/CpuFeatures.cpp
   Source/BigBuffer.cpp
+  Source/VideoEngine.cpp
   Source/Benchmarks/CpuBenchmark.cpp
   Source/Benchmarks/MemoryBenchmark.cpp
   Source/Benchmarks/PiBenchmark.cpp

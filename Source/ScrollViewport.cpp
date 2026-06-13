@@ -10,10 +10,34 @@ void ScrollViewport::Clear() {
     mScrollPos = 0;
 }
 
-void ScrollViewport::AddLine(const char* text, Color color) {
+void ScrollViewport::ClearContent() {
+    mCount = 0;
+    // mScrollPos intentionally preserved — caller adjusts with ScrollToLine()
+}
+
+void ScrollViewport::AddLine(const char* text, Color fg) {
     if (mCount >= MAX_LINES) return;
     Line& l = mLines[mCount++];
-    l.color = color;
+    l.fg    = fg;
+    l.bg    = {};
+    l.hasBg = false;
+
+    int p = 0;
+    if (text) {
+        while (text[p] && p < MAX_WIDTH - 1) {
+            l.text[p] = text[p];
+            ++p;
+        }
+    }
+    l.text[p] = '\0';
+}
+
+void ScrollViewport::AddLine(const char* text, Color fg, Color bg) {
+    if (mCount >= MAX_LINES) return;
+    Line& l = mLines[mCount++];
+    l.fg    = fg;
+    l.bg    = bg;
+    l.hasBg = true;
 
     int p = 0;
     if (text) {
@@ -27,15 +51,19 @@ void ScrollViewport::AddLine(const char* text, Color color) {
 
 void ScrollViewport::AddLine() {
     if (mCount >= MAX_LINES) return;
-    mLines[mCount].text[0] = '\0';
-    mLines[mCount].color   = Theme::Current().Text;
-    ++mCount;
+    Line& l    = mLines[mCount++];
+    l.text[0]  = '\0';
+    l.fg       = Theme::Current().Text;
+    l.bg       = {};
+    l.hasBg    = false;
 }
 
 void ScrollViewport::AddSeparator() {
     if (mCount >= MAX_LINES) return;
     Line& l   = mLines[mCount++];
-    l.color   = Theme::Current().Separator;
+    l.fg      = Theme::Current().Separator;
+    l.bg      = {};
+    l.hasBg   = false;
     int cols  = static_cast<int>(Renderer::Columns());
     int limit = cols < MAX_WIDTH - 1 ? cols : MAX_WIDTH - 1;
     for (int i = 0; i < limit; ++i) l.text[i] = '-';
@@ -49,8 +77,14 @@ void ScrollViewport::Render(int startRow, int viewRows) const {
         if (screenRow >= rows) break;
         int lineIdx = mScrollPos + i;
         if (lineIdx < mCount) {
-            Renderer::DrawText(0, screenRow, mLines[lineIdx].text, mLines[lineIdx].color);
+            const Line& l = mLines[lineIdx];
+            if (l.hasBg)
+                Renderer::DrawTextBg(0, screenRow, l.text, l.fg, l.bg);
+            else
+                Renderer::DrawText(0, screenRow, l.text, l.fg);
         } else {
+            // Clear trailing rows so stale content from the previous frame
+            // does not bleed through on partial updates.
             Renderer::DrawText(0, screenRow, "", Theme::Current().Text);
         }
     }
@@ -58,12 +92,12 @@ void ScrollViewport::Render(int startRow, int viewRows) const {
 
 bool ScrollViewport::HandleKey(EFI_INPUT_KEY key, int viewRows) {
     if (key.ScanCode == SCAN_UP) {
-        if (mScrollPos > 0) { --mScrollPos; return true; }
+        if (mScrollPos > 0) --mScrollPos;
         return true;
     }
     if (key.ScanCode == SCAN_DOWN) {
         ClampScroll(viewRows);
-        if (mScrollPos + viewRows < mCount) { ++mScrollPos; return true; }
+        if (mScrollPos + viewRows < mCount) ++mScrollPos;
         return true;
     }
     if (key.ScanCode == SCAN_PAGE_UP) {
@@ -86,6 +120,16 @@ bool ScrollViewport::HandleKey(EFI_INPUT_KEY key, int viewRows) {
         return true;
     }
     return false;
+}
+
+void ScrollViewport::ScrollToLine(int line, int viewRows) {
+    // Scroll up so the line appears at or below the top
+    if (line < mScrollPos)
+        mScrollPos = line;
+    // Scroll down so the line appears at or above the bottom
+    else if (line >= mScrollPos + viewRows)
+        mScrollPos = line - viewRows + 1;
+    ClampScroll(viewRows);
 }
 
 void ScrollViewport::ClampScroll(int viewRows) {

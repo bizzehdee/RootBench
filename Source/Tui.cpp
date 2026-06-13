@@ -279,6 +279,10 @@ void Tui::ShowMainMenu() {
 
 // ── Benchmark Selection ──────────────────────────────────────
 
+// File-scope viewport: preserves scroll position between frames (rebuilt each
+// frame with ClearContent() so the cursor highlight and checkbox state refresh).
+static ScrollViewport sBenchSelectVp;
+
 void Tui::ShowBenchmarkSelection() {
     UINTN bmCount = BenchmarkRegistry::Count();
     if (bmCount == 0) {
@@ -310,46 +314,52 @@ void Tui::ShowBenchmarkSelection() {
         modes[i] = (tm == ThreadingMode::MultiOnly) ? RunMode::MultiCore : RunMode::SingleCore;
     }
 
+    // Layout constants (row budget for hint + blank above the viewport):
+    //   header=4  hint=1  blank=1  → contentStart=6
+    //   below viewport: separator=1  description=1  footer=3  → -5
+    const int kHeaderRows   = 4;  // DrawHeader(3) + blank
+    const int kAboveContent = 2;  // hint + blank
+    const int kBelowContent = 5;  // sep + desc + footer(3)
+    const int contentStart  = kHeaderRows + kAboveContent;
+
+    // On first entry reset the viewport entirely; scroll persists across frames.
+    sBenchSelectVp.Clear();
+
     while (true) {
-        Renderer::Clear();
-        int row = DrawHeader("Select Benchmarks");
-        row++;
-        if (mpAvail) {
-            char hint[80];
-            int p = 0;
-            for (const char* s = "Space:Toggle  Left/Right:Mode ("; *s; ++s) hint[p++] = *s;
-            const char* ns = UintToStr(apCount);
-            for (int j = 0; ns[j]; ++j) hint[p++] = ns[j];
-            for (const char* s = " APs available)"; *s; ++s) hint[p++] = *s;
-            hint[p] = '\0';
-            Renderer::DrawText(2, row, hint, Theme::Current().TextDim);
-        } else {
-            Renderer::DrawText(2, row, "Space:Toggle  (single-core only — no MP Services)", Theme::Current().TextDim);
-        }
-        row += 2;
+        // Recompute view height each frame (handles resolution changes).
+        int viewRows = static_cast<int>(Renderer::Rows()) - contentStart - kBelowContent;
+        if (viewRows < 4) viewRows = 4;
 
-        int menuStart = row;
+        // Rebuild viewport content for this frame.
+        sBenchSelectVp.ClearContent();
+        int cursorVpRow = 0;
 
-        // Emit grouped list with section headers
         DurationClass lastDc = DurationClass::Long; // force header on first item
-        int vRow = menuStart;
         for (UINTN i = 0; i < bmCount; ++i) {
             DurationClass dc = all[i]->GetDurationClass();
             if (dc != lastDc || i == 0) {
-                // Section header row
                 const char* hdr = (dc == DurationClass::Short)
                     ? "  -- Short running --"
                     : "  -- Long running --";
-                Renderer::DrawText(0, vRow, hdr, Theme::Current().TextDim);
-                ++vRow;
+                sBenchSelectVp.AddLine(hdr, Theme::Current().TextDim);
                 lastDc = dc;
             }
 
             ThreadingMode tm = all[i]->GetThreadingMode();
             const char* name = all[i]->GetName();
             const char* cat  = all[i]->GetCategory();
+
+            // Format: "  [>] [X] name (padded)   [cat]  mode ◄►"
             char label[128];
             int p = 0;
+            label[p++] = ' '; label[p++] = ' ';
+            label[p++] = (static_cast<int>(i) == cursor) ? '>' : ' ';
+            label[p++] = ' ';
+            label[p++] = '[';
+            label[p++] = selected[i] ? 'X' : ' ';
+            label[p++] = ']';
+            label[p++] = ' ';
+
             for (int j = 0; name[j] && p < 36; ++j) label[p++] = name[j];
             while (p < 38) label[p++] = ' ';
             label[p++] = '[';
@@ -368,22 +378,58 @@ void Tui::ShowBenchmarkSelection() {
                 modeStr = "Single";
 
             for (int j = 0; modeStr[j] && p < 64; ++j) label[p++] = modeStr[j];
-
             if (mpAvail && tm != ThreadingMode::SingleOnly) {
                 for (const char* s = " \x11\x10"; *s && p < 80; ++s) label[p++] = *s;
             }
+
+            // Pad to screen width so the background fill covers the whole row.
+            int cols = static_cast<int>(Renderer::Columns());
+            while (p < cols && p < 126) label[p++] = ' ';
             label[p] = '\0';
 
-            DrawMenuItem(vRow, label, static_cast<int>(i) == cursor, true, selected[i]);
-            ++vRow;
+            bool hi = (static_cast<int>(i) == cursor);
+            if (hi) cursorVpRow = sBenchSelectVp.TotalLines();
+
+            if (hi)
+                sBenchSelectVp.AddLine(label,
+                    Theme::Current().HighlightTxt, Theme::Current().Highlight);
+            else
+                sBenchSelectVp.AddLine(label,
+                    Theme::Current().Text, Theme::Current().Background);
         }
 
-        // Description of current item
-        int descRow = vRow + 1;
-        DrawSeparator(descRow - 1);
-        Renderer::DrawText(2, descRow, all[cursor]->GetDescription(), Theme::Current().TextDim);
+        // Scroll so the cursor item is always visible.
+        sBenchSelectVp.ScrollToLine(cursorVpRow, viewRows);
 
-        DrawFooter("[Up/Dn] Move [Space] Toggle [L/R] Mode [Enter] Run [Esc] Back");
+        // Draw fixed chrome.
+        Renderer::Clear();
+        int row = DrawHeader("Select Benchmarks");
+        row++; // blank after header
+        if (mpAvail) {
+            char hint[80]; int p = 0;
+            for (const char* s = "Space:Toggle  Left/Right:Mode ("; *s; ++s) hint[p++] = *s;
+            const char* ns = UintToStr(apCount);
+            for (int j = 0; ns[j]; ++j) hint[p++] = ns[j];
+            for (const char* s = " APs available)"; *s; ++s) hint[p++] = *s;
+            hint[p] = '\0';
+            Renderer::DrawText(2, row, hint, Theme::Current().TextDim);
+        } else {
+            Renderer::DrawText(2, row, "Space:Toggle  (single-core only — no MP Services)",
+                               Theme::Current().TextDim);
+        }
+        row++; // blank
+
+        // Scrollable list.
+        sBenchSelectVp.Render(contentStart, viewRows);
+
+        // Separator + description below the viewport.
+        int sepRow  = contentStart + viewRows;
+        int descRow = sepRow + 1;
+        DrawSeparator(sepRow);
+        Renderer::DrawText(2, descRow, all[cursor]->GetDescription(),
+                           Theme::Current().TextDim);
+
+        DrawFooter("[Up/Dn] Move  [Space] Toggle  [L/R] Mode  [Enter] Run  [Esc] Back");
         Renderer::Present();
 
         EFI_INPUT_KEY key = Renderer::WaitKey();
@@ -396,8 +442,6 @@ void Tui::ShowBenchmarkSelection() {
         else if (key.ScanCode == SCAN_LEFT || key.ScanCode == SCAN_RIGHT) {
             ThreadingMode tm = all[cursor]->GetThreadingMode();
             if (mpAvail && tm != ThreadingMode::SingleOnly) {
-                // Cycle: Single → Multi → Cycle → Single (Either)
-                //        Multi  → Cycle → Multi         (MultiOnly)
                 if (key.ScanCode == SCAN_RIGHT) {
                     if (tm == ThreadingMode::MultiOnly) {
                         modes[cursor] = (modes[cursor] == RunMode::MultiCore)
@@ -407,7 +451,7 @@ void Tui::ShowBenchmarkSelection() {
                         else if (modes[cursor] == RunMode::MultiCore)  modes[cursor] = RunMode::CoreCycle;
                         else                                            modes[cursor] = RunMode::SingleCore;
                     }
-                } else { // SCAN_LEFT
+                } else {
                     if (tm == ThreadingMode::MultiOnly) {
                         modes[cursor] = (modes[cursor] == RunMode::MultiCore)
                                         ? RunMode::CoreCycle : RunMode::MultiCore;
@@ -426,14 +470,9 @@ void Tui::ShowBenchmarkSelection() {
             RunMode selModes[32];
             UINTN count = 0;
             for (UINTN i = 0; i < bmCount; ++i) {
-                if (selected[i]) {
-                    indices[count]  = i;
-                    selModes[count] = modes[i];
-                    ++count;
-                }
+                if (selected[i]) { indices[count] = i; selModes[count] = modes[i]; ++count; }
             }
-            if (count > 0)
-                ShowRunCountPicker(indices, selModes, count);
+            if (count > 0) ShowRunCountPicker(indices, selModes, count);
             return;
         }
     }
@@ -546,6 +585,8 @@ void Tui::RunBenchmarks(const UINTN* indices, const RunMode* modes,
 
 // ── Category Results ─────────────────────────────────────────
 
+static ScrollViewport sCatResultsVp;
+
 void Tui::ShowCategoryResults(const char* category) {
     if (mLastResults.Empty()) { ShowResults(); return; }
 
@@ -558,137 +599,155 @@ void Tui::ShowCategoryResults(const char* category) {
         hdrTitle[p] = '\0';
     }
 
-    Renderer::FlushInput();
-    while (true) {
-        Renderer::Clear();
-        int row = DrawHeader(hdrTitle);
-        row++;
+    // Helper: fill buf[col..col+w-1] with text padded by spaces.
+    auto PadAt = [](char* buf, int col, const char* text, int w) {
+        int len = text ? (int)StrLen(text) : 0;
+        for (int i = 0; i < w && col + i < ScrollViewport::MAX_WIDTH - 1; ++i)
+            buf[col + i] = (i < len) ? text[i] : ' ';
+    };
 
-        // Column headers
-        Renderer::DrawText(2,  row, Renderer::Pad("Benchmark",  36), Theme::Current().Accent);
-        Renderer::DrawText(38, row, Renderer::Pad("Score",      14), Theme::Current().Accent);
-        Renderer::DrawText(52, row, Renderer::Pad("Unit",       12), Theme::Current().Accent);
-        Renderer::DrawText(64, row, "Avg time (ms)",              Theme::Current().Accent);
-        row++;
-        row = DrawSeparator(row);
+    // Helper: format X.Y tok/s
+    auto FmtTok = [](char* out, UINT64 score, UINT32 refX10) {
+        UINT64 t = score * refX10 / 1000;
+        int p = 0;
+        const char* n = UintToStr(t / 10);
+        for (int i = 0; n[i]; ++i) out[p++] = n[i];
+        out[p++] = '.'; out[p++] = '0' + (char)(t % 10);
+        for (const char* s = " t/s"; *s; ++s) out[p++] = *s;
+        out[p] = '\0';
+    };
 
-        // Accumulate weighted composite while rendering rows
-        UINT64 weightedSum   = 0;
-        UINT64 totalWeight   = 0;
-        bool   sameUnit      = true;
-        const char* firstUnit = nullptr;
+    // Build viewport once (results do not change while the screen is open).
+    sCatResultsVp.Clear();
 
-        for (UINTN i = 0; i < mLastResults.Size(); ++i) {
-            auto& r = mLastResults[i];
-            if (StrCmp(r.Category, category) != 0) continue;
+    UINT64 weightedSum = 0, totalWeight = 0;
+    bool sameUnit = true;
+    const char* firstUnit = nullptr;
 
-            Renderer::DrawText(2, row, Renderer::Pad(r.Name, 36), Theme::Current().Text);
+    for (UINTN i = 0; i < mLastResults.Size(); ++i) {
+        auto& r = mLastResults[i];
+        if (StrCmp(r.Category, category) != 0) continue;
 
-            if (r.ErrorCount > 0) {
-                static char errStr[32];
-                int p = 0;
-                for (const char* s = "ERRORS: "; *s; ++s) errStr[p++] = *s;
-                const char* ns = UintToStr(r.ErrorCount);
-                for (int j = 0; ns[j]; ++j) errStr[p++] = ns[j];
-                errStr[p] = '\0';
-                Renderer::DrawText(38, row, Renderer::Pad(errStr, 14), Theme::Current().Error);
-            } else if (r.Score > 0) {
-                Renderer::DrawText(38, row, Renderer::Pad(UintToStr(r.Score), 14), Theme::Current().Success);
-                Renderer::DrawText(52, row, Renderer::Pad(r.Unit, 12),             Theme::Current().TextDim);
-                if (r.IncludeInScore) {
-                    if (!firstUnit) firstUnit = r.Unit;
-                    else if (StrCmp(firstUnit, r.Unit) != 0) sameUnit = false;
-                    weightedSum  += r.Score * r.CategoryWeight;
-                    totalWeight  += r.CategoryWeight;
-                }
-            } else if (!r.IncludeInScore) {
-                Renderer::DrawText(38, row, Renderer::Pad("--", 14), Theme::Current().TextDim);
-                Renderer::DrawText(52, row, "[pass/fail]",            Theme::Current().TextDim);
-            } else {
-                Renderer::DrawText(38, row, Renderer::Pad("--", 14), Theme::Current().TextDim);
+        // Pre-fill row with spaces.
+        char row[ScrollViewport::MAX_WIDTH];
+        for (int k = 0; k < ScrollViewport::MAX_WIDTH - 1; ++k) row[k] = ' ';
+        row[ScrollViewport::MAX_WIDTH - 1] = '\0';
+
+        PadAt(row,  2, r.Name, 36);
+
+        Color lineColor = Theme::Current().Text;
+        if (r.ErrorCount > 0) {
+            static char errStr[32]; int p = 0;
+            for (const char* s = "ERRORS: "; *s; ++s) errStr[p++] = *s;
+            const char* ns = UintToStr(r.ErrorCount);
+            for (int j = 0; ns[j]; ++j) errStr[p++] = ns[j];
+            errStr[p] = '\0';
+            PadAt(row, 38, errStr, 14);
+            lineColor = Theme::Current().Error;
+        } else if (r.Score > 0) {
+            PadAt(row, 38, UintToStr(r.Score), 14);
+            PadAt(row, 52, r.Unit,             12);
+            if (r.IncludeInScore) {
+                if (!firstUnit) firstUnit = r.Unit;
+                else if (StrCmp(firstUnit, r.Unit) != 0) sameUnit = false;
+                weightedSum += r.Score * r.CategoryWeight;
+                totalWeight += r.CategoryWeight;
             }
-
-            UINT64 avgUs = Stats::GetAverage(r.RunTimesUs);
-            Renderer::DrawText(64, row, Renderer::Pad(UintToStr(avgUs / 1000), 12), Theme::Current().TextDim);
-            row++;
+            lineColor = Theme::Current().Success;
+        } else if (!r.IncludeInScore) {
+            PadAt(row, 38, "--",          14);
+            PadAt(row, 52, "[pass/fail]", 12);
+        } else {
+            PadAt(row, 38, "--", 14);
         }
 
-        row++;
-        row = DrawSeparator(row);
+        UINT64 avgUs = Stats::GetAverage(r.RunTimesUs);
+        PadAt(row, 64, UintToStr(avgUs / 1000), 12);
 
-        // Weighted composite score
-        UINT64 composite = (totalWeight > 0) ? weightedSum / totalWeight : 0;
-        if (composite > 0) {
-            const char* compLabel = (totalWeight != (UINT64)100 * (totalWeight / 100))
-                                    ? "Weighted Score:"
-                                    : "Composite Score:";
-            Renderer::DrawText(2,  row, compLabel, Theme::Current().Accent);
-            Renderer::DrawText(38, row, Renderer::Pad(UintToStr(composite), 14), Theme::Current().Accent);
-            if (sameUnit && firstUnit)
-                Renderer::DrawText(52, row, Renderer::Pad(firstUnit, 12), Theme::Current().TextDim);
-            else
-                Renderer::DrawText(52, row, "(mixed units)", Theme::Current().TextDim);
-            row++;
-        }
+        sCatResultsVp.AddLine(row, lineColor);
+    }
+
+    sCatResultsVp.AddSeparator();
+
+    // Weighted composite score
+    UINT64 composite = (totalWeight > 0) ? weightedSum / totalWeight : 0;
+    if (composite > 0) {
+        char compRow[ScrollViewport::MAX_WIDTH];
+        for (int k = 0; k < ScrollViewport::MAX_WIDTH - 1; ++k) compRow[k] = ' ';
+        compRow[ScrollViewport::MAX_WIDTH - 1] = '\0';
+        const char* compLabel = (totalWeight != (UINT64)100 * (totalWeight / 100))
+                                ? "Weighted Score:" : "Composite Score:";
+        PadAt(compRow,  2, compLabel,               36);
+        PadAt(compRow, 38, UintToStr(composite),    14);
+        if (sameUnit && firstUnit)
+            PadAt(compRow, 52, firstUnit,            12);
+        else
+            PadAt(compRow, 52, "(mixed units)",      12);
+        sCatResultsVp.AddLine(compRow, Theme::Current().Accent);
 
         // AI-specific LLM performance estimates
-        if (composite > 0 && StrCmp(category, "AI") == 0) {
-            row++;
-            Renderer::DrawText(2, row, "LLM Performance Estimate (llama.cpp, approx.):",
-                               Theme::Current().Accent);
-            row++;
-            Renderer::DrawText(4,  row, "Model:",   Theme::Current().TextDim);
-            Renderer::DrawText(20, row, "7B Q4",    Theme::Current().TextDim);
-            Renderer::DrawText(32, row, "14B Q4",   Theme::Current().TextDim);
-            Renderer::DrawText(44, row, "32B Q4",   Theme::Current().TextDim);
-            row++;
+        if (StrCmp(category, "AI") == 0) {
+            sCatResultsVp.AddLine();
+            sCatResultsVp.AddLine("  LLM Performance Estimate (llama.cpp, approx.):",
+                                  Theme::Current().Accent);
 
-            // Format X.Y tok/s using ×10 fixed-point arithmetic
-            auto fmtTok = [](char* buf, UINT64 score, UINT32 ref_x10) -> const char* {
-                UINT64 t = score * ref_x10 / 1000;
-                int p = 0;
-                const char* n = UintToStr(t / 10);
-                for (int i = 0; n[i]; ++i) buf[p++] = n[i];
-                buf[p++] = '.';
-                buf[p++] = '0' + (char)(t % 10);
-                for (const char* s = " t/s"; *s; ++s) buf[p++] = *s;
-                buf[p] = '\0';
-                return buf;
+            static char t7[24], t14[24], t32[24];
+            FmtTok(t7,  composite, AI_LLM_7B_Q4_TOKS_X10);
+            FmtTok(t14, composite, AI_LLM_14B_Q4_TOKS_X10);
+            FmtTok(t32, composite, AI_LLM_32B_Q4_TOKS_X10);
+
+            auto AddLlm = [&](const char* model, const char* toks) {
+                char lr[ScrollViewport::MAX_WIDTH];
+                for (int k = 0; k < ScrollViewport::MAX_WIDTH - 1; ++k) lr[k] = ' ';
+                lr[ScrollViewport::MAX_WIDTH - 1] = '\0';
+                PadAt(lr,  4, model, 16); PadAt(lr, 20, toks, 20);
+                sCatResultsVp.AddLine(lr, Theme::Current().Success);
             };
-
-            static char t7[16], t14[16], t32[16];
-            Renderer::DrawText(4,  row, "Est:",
-                               Theme::Current().Text);
-            Renderer::DrawText(20, row,
-                fmtTok(t7,  composite, AI_LLM_7B_Q4_TOKS_X10),  Theme::Current().Success);
-            Renderer::DrawText(32, row,
-                fmtTok(t14, composite, AI_LLM_14B_Q4_TOKS_X10), Theme::Current().Success);
-            Renderer::DrawText(44, row,
-                fmtTok(t32, composite, AI_LLM_32B_Q4_TOKS_X10), Theme::Current().Success);
-            row++;
+            AddLlm("7B Q4:",  t7);
+            AddLlm("14B Q4:", t14);
+            AddLlm("32B Q4:", t32);
         }
+    }
 
-        row++;
-        // Total time
-        UINT64 totalUs = 0;
-        for (UINTN i = 0; i < mLastResults.Size(); ++i) totalUs += mLastResults[i].TotalTimeUs;
-        Renderer::DrawText(2, row,
-            Concat3("Total suite time: ", UintToStr(totalUs / 1000), " ms"),
-            Theme::Current().Text);
+    sCatResultsVp.AddLine();
+    UINT64 totalUs = 0;
+    for (UINTN i = 0; i < mLastResults.Size(); ++i) totalUs += mLastResults[i].TotalTimeUs;
+    sCatResultsVp.AddLine(Concat3("  Total suite time: ", UintToStr(totalUs / 1000), " ms"),
+                          Theme::Current().Text);
 
-        DrawFooter("[Enter] Detailed View  [Esc] Back");
+    // Fixed layout: header(4) + col-headers(1) + separator(1) = contentStart 6
+    const int contentStart = 6;
+    const int footerRows   = 3;
+
+    Renderer::FlushInput();
+    while (true) {
+        int viewRows = static_cast<int>(Renderer::Rows()) - contentStart - footerRows;
+        if (viewRows < 4) viewRows = 4;
+
+        Renderer::Clear();
+        DrawHeader(hdrTitle);
+
+        // Fixed column headers at row 4
+        Renderer::DrawText(2,  4, Renderer::Pad("Benchmark",    36), Theme::Current().Accent);
+        Renderer::DrawText(38, 4, Renderer::Pad("Score",        14), Theme::Current().Accent);
+        Renderer::DrawText(52, 4, Renderer::Pad("Unit",         12), Theme::Current().Accent);
+        Renderer::DrawText(64, 4, "Avg time (ms)",                   Theme::Current().Accent);
+        DrawSeparator(5);
+
+        sCatResultsVp.Render(contentStart, viewRows);
+        DrawFooter("[Up/Dn/PgUp/PgDn] Scroll  [Enter] Detailed View  [Esc] Back");
         Renderer::Present();
 
         EFI_INPUT_KEY key = Renderer::WaitKey();
         if (key.ScanCode == SCAN_ESC) return;
-        if (key.UnicodeChar == '\r' || key.UnicodeChar == '\n') {
-            ShowResults();
-            return;
-        }
+        if (key.UnicodeChar == '\r' || key.UnicodeChar == '\n') { ShowResults(); return; }
+        sCatResultsVp.HandleKey(key, viewRows);
     }
 }
 
 // ── Results ──────────────────────────────────────────────────
+
+static ScrollViewport sResultsVp;
 
 void Tui::ShowResults() {
     if (mLastResults.Empty()) {
@@ -715,182 +774,176 @@ void Tui::ShowResults() {
         }
     }
 
-    int scroll = 0;
-    int resultCount = flatCount;
+    // Helper: write text into a fixed-width field within a line buffer.
+    auto PadAt = [](char* buf, int col, const char* text, int w) {
+        int len = text ? static_cast<int>(StrLen(text)) : 0;
+        for (int i = 0; i < w && col + i < ScrollViewport::MAX_WIDTH - 1; ++i)
+            buf[col + i] = (i < len) ? text[i] : ' ';
+    };
+
+    // Build viewport once — results don't change while this screen is open.
+    sResultsVp.Clear();
+
+    for (int i = 0; i < flatCount; ++i) {
+        auto& dr = flat[i];
+        auto& r  = mLastResults[static_cast<UINTN>(dr.resIdx)];
+
+        char line[ScrollViewport::MAX_WIDTH];
+        for (int k = 0; k < ScrollViewport::MAX_WIDTH - 1; ++k) line[k] = ' ';
+        line[ScrollViewport::MAX_WIDTH - 1] = '\0';
+
+        Color lineColor = Theme::Current().Text;
+
+        if (dr.coreIdx < 0) {
+            // ── Summary row ──
+            PadAt(line,  2, r.Name,     22);
+            PadAt(line, 24, r.Category,  6);
+
+            char coreStr[16];
+            if (r.RunModeUsed == RunMode::CoreCycle) {
+                int p = 0;
+                coreStr[p++] = 'C'; coreStr[p++] = 'C';
+                const char* n = UintToStr(r.CoreCount);
+                for (int j = 0; n[j] && p < 14; ++j) coreStr[p++] = n[j];
+                coreStr[p] = '\0';
+            } else if (r.MultiCore) {
+                int p = 0;
+                const char* n = UintToStr(r.CoreCount);
+                for (int j = 0; n[j] && p < 10; ++j) coreStr[p++] = n[j];
+                coreStr[p++] = 'x'; coreStr[p] = '\0';
+            } else {
+                coreStr[0] = '1'; coreStr[1] = '\0';
+            }
+            PadAt(line, 30, coreStr, 7);
+
+            UINT64 avg = Stats::GetAverage(r.RunTimesUs);
+            UINT64 mn  = Stats::GetMin(r.RunTimesUs);
+            UINT64 mx  = Stats::GetMax(r.RunTimesUs);
+            PadAt(line, 37, UintToStr(avg), 12);
+            PadAt(line, 49, UintToStr(mn),  12);
+            PadAt(line, 61, UintToStr(mx),  12);
+
+            if (r.ErrorCount > 0) {
+                PadAt(line, 73, "ERR", 11);
+                lineColor = Theme::Current().Error;
+            } else if (r.Score > 0) {
+                PadAt(line, 73, UintToStr(r.Score), 11);
+                PadAt(line, 84, r.Unit,              9);
+                lineColor = Theme::Current().Success;
+            } else {
+                PadAt(line, 73, "---", 11);
+                lineColor = Theme::Current().TextDim;
+            }
+        } else {
+            // ── Per-core sub-row ──
+            int c = dr.coreIdx;
+
+            char label[32]; label[0] = '\0';
+            {
+                CoreSelection::ApInfo* roster = CoreSelection::GetAll();
+                UINT32 total = CoreSelection::Count();
+                UINT32 apIdx = r.PerCoreApIndex[static_cast<UINT32>(c)];
+                int p = 0;
+                label[p++] = ' '; label[p++] = ' ';
+                label[p++] = '+'; label[p++] = '-';
+                label[p++] = 'A'; label[p++] = 'P';
+                const char* as = UintToStr(apIdx);
+                for (int j = 0; as[j] && p < 8; ++j) label[p++] = as[j];
+                for (UINT32 ri2 = 0; ri2 < total; ++ri2) {
+                    if (roster[ri2].ProcIndex == apIdx) {
+                        label[p++] = ' ';
+                        label[p++] = 'P'; label[p++] = '0'; label[p++] = '+';
+                        label[p++] = 'C';
+                        const char* cs2 = UintToStr(roster[ri2].Core);
+                        for (int j = 0; cs2[j] && p < 28; ++j) label[p++] = cs2[j];
+                        label[p++] = 'T';
+                        const char* ts = UintToStr(roster[ri2].Thread);
+                        for (int j = 0; ts[j] && p < 30; ++j) label[p++] = ts[j];
+                        break;
+                    }
+                }
+                label[p] = '\0';
+            }
+            PadAt(line, 2, label, 22);
+
+            bool outlier = false;
+            if (r.Score > 0) {
+                UINT64 sc  = r.PerCoreScore[static_cast<UINT32>(c)];
+                UINT64 dev = (sc > r.Score) ? sc - r.Score : r.Score - sc;
+                outlier    = (dev * 100 / r.Score) > 5;
+            }
+            lineColor = outlier ? Theme::Current().Warning : Theme::Current().TextDim;
+
+            UINT64 sc = r.PerCoreScore[static_cast<UINT32>(c)];
+            UINT64 mn = r.PerCoreMin[static_cast<UINT32>(c)];
+            UINT64 mx = r.PerCoreMax[static_cast<UINT32>(c)];
+            if (sc > 0 || mn > 0 || mx > 0) {
+                PadAt(line, 73, UintToStr(sc), 11);
+                PadAt(line, 49, UintToStr(mn), 12);
+                PadAt(line, 61, UintToStr(mx), 12);
+                PadAt(line, 84, r.Unit,         9);
+            } else {
+                PadAt(line, 37, UintToStr(r.PerCoreTimeUs[static_cast<UINT32>(c)]), 12);
+                PadAt(line, 84, "us", 9);
+            }
+        }
+
+        sResultsVp.AddLine(line, lineColor);
+    }
+
+    // Trailing summary lines
+    sResultsVp.AddSeparator();
+    UINT64 totalTime = 0;
+    for (UINTN i = 0; i < mLastResults.Size(); ++i) totalTime += mLastResults[i].TotalTimeUs;
+    sResultsVp.AddLine(Concat3("  Total suite time: ", UintToStr(totalTime / 1000), " ms"),
+                       Theme::Current().Text);
+
+    UINT64 totalErrors = 0;
+    for (UINTN i = 0; i < mLastResults.Size(); ++i) totalErrors += mLastResults[i].ErrorCount;
+    if (totalErrors > 0)
+        sResultsVp.AddLine(
+            Concat3("  !! RAM ERRORS DETECTED: ", UintToStr(totalErrors), " mismatches !!"),
+            Theme::Current().Error);
+
+    if (Timer::IsCalibrated()) {
+        sResultsVp.AddLine(
+            Concat3("  TSC: ", UintToStr(Timer::CyclesPerUs()), " cycles/us"),
+            Theme::Current().TextDim);
+        if (!Timer::HasInvariantTSC())
+            sResultsVp.AddLine(
+                "  Warning: Invariant TSC not detected; timing may be imprecise",
+                Theme::Current().Warning);
+    }
+
+    // Fixed layout: header(3) + blank(1) = row 4 for col-headers, row 5 separator, contentStart 6
+    const int contentStart = 6;
+    const int footerRows   = 3;
 
     Renderer::FlushInput();
     while (true) {
+        int viewRows = static_cast<int>(Renderer::Rows()) - contentStart - footerRows;
+        if (viewRows < 4) viewRows = 4;
+
         Renderer::Clear();
-        int row = DrawHeader("Benchmark Results");
-        row++;
+        DrawHeader("Benchmark Results");
 
-        // Column headers — grid is 100 cols
-        Renderer::DrawText(2,  row, Renderer::Pad("Benchmark", 22),   Theme::Current().Accent);
-        Renderer::DrawText(24, row, Renderer::Pad("Cat", 6),           Theme::Current().Accent);
-        Renderer::DrawText(30, row, Renderer::Pad("Cores", 7),         Theme::Current().Accent);
-        Renderer::DrawText(37, row, Renderer::Pad("Avg(us)", 12),      Theme::Current().Accent);
-        Renderer::DrawText(49, row, Renderer::Pad("Min(us)", 12),      Theme::Current().Accent);
-        Renderer::DrawText(61, row, Renderer::Pad("Max(us)", 12),      Theme::Current().Accent);
-        Renderer::DrawText(73, row, Renderer::Pad("Score", 11),        Theme::Current().Accent);
-        Renderer::DrawText(84, row, Renderer::Pad("Unit", 9),          Theme::Current().Accent);
-        row++;
-        row = DrawSeparator(row);
+        Renderer::DrawText(2,  4, Renderer::Pad("Benchmark", 22), Theme::Current().Accent);
+        Renderer::DrawText(24, 4, Renderer::Pad("Cat",        6), Theme::Current().Accent);
+        Renderer::DrawText(30, 4, Renderer::Pad("Cores",      7), Theme::Current().Accent);
+        Renderer::DrawText(37, 4, Renderer::Pad("Avg(us)",   12), Theme::Current().Accent);
+        Renderer::DrawText(49, 4, Renderer::Pad("Min(us)",   12), Theme::Current().Accent);
+        Renderer::DrawText(61, 4, Renderer::Pad("Max(us)",   12), Theme::Current().Accent);
+        Renderer::DrawText(73, 4, Renderer::Pad("Score",     11), Theme::Current().Accent);
+        Renderer::DrawText(84, 4, Renderer::Pad("Unit",       9), Theme::Current().Accent);
+        DrawSeparator(5);
 
-        int viewRows = static_cast<int>(Renderer::Rows()) - row - 8;
-        for (int i = 0; i < viewRows && (scroll + i) < resultCount; ++i) {
-            auto& dr = flat[scroll + i];
-            auto& r  = mLastResults[static_cast<UINTN>(dr.resIdx)];
-
-            if (dr.coreIdx < 0) {
-                // ── Summary row ──
-                Renderer::DrawText(2,  row, Renderer::Pad(r.Name, 22),     Theme::Current().Text);
-                Renderer::DrawText(24, row, Renderer::Pad(r.Category, 6),  Theme::Current().Accent);
-
-                char coreStr[16];
-                if (r.RunModeUsed == RunMode::CoreCycle) {
-                    // "CC8" style label
-                    int p = 0;
-                    coreStr[p++] = 'C'; coreStr[p++] = 'C';
-                    const char* n = UintToStr(r.CoreCount);
-                    for (int j = 0; n[j] && p < 14; ++j) coreStr[p++] = n[j];
-                    coreStr[p] = '\0';
-                } else if (r.MultiCore) {
-                    const char* n = UintToStr(r.CoreCount);
-                    int p = 0;
-                    for (int j = 0; n[j] && p < 10; ++j) coreStr[p++] = n[j];
-                    coreStr[p++] = 'x'; coreStr[p] = '\0';
-                } else {
-                    coreStr[0] = '1'; coreStr[1] = '\0';
-                }
-                Renderer::DrawText(30, row, Renderer::Pad(coreStr, 7),
-                    (r.RunModeUsed == RunMode::CoreCycle || r.MultiCore)
-                        ? Theme::Current().Warning : Theme::Current().TextDim);
-
-                UINT64 avg = Stats::GetAverage(r.RunTimesUs);
-                UINT64 mn  = Stats::GetMin(r.RunTimesUs);
-                UINT64 mx  = Stats::GetMax(r.RunTimesUs);
-
-                Renderer::DrawText(37, row, Renderer::Pad(UintToStr(avg), 12), Theme::Current().Success);
-                Renderer::DrawText(49, row, Renderer::Pad(UintToStr(mn),  12), Theme::Current().TextDim);
-                Renderer::DrawText(61, row, Renderer::Pad(UintToStr(mx),  12), Theme::Current().TextDim);
-
-                if (r.Score > 0) {
-                    Renderer::DrawText(73, row, Renderer::Pad(UintToStr(r.Score), 11), Theme::Current().Accent);
-                    Renderer::DrawText(84, row, Renderer::Pad(r.Unit,             9),  Theme::Current().TextDim);
-                } else {
-                    Renderer::DrawText(73, row, Renderer::Pad("---", 11), Theme::Current().TextDim);
-                }
-
-                if (r.ErrorCount > 0)
-                    Renderer::DrawText(93, row, "ERR", Theme::Current().Error);
-
-            } else {
-                // ── Per-core sub-row ──
-                int c = dr.coreIdx;
-
-                // Look up package/core/thread from CoreSelection roster
-                char label[32];
-                label[0] = '\0';
-                {
-                    CoreSelection::ApInfo* roster = CoreSelection::GetAll();
-                    UINT32 total = CoreSelection::Count();
-                    UINT32 apIdx = r.PerCoreApIndex[static_cast<UINT32>(c)];
-                    int p = 0;
-                    label[p++] = ' '; label[p++] = ' ';
-                    label[p++] = '+'; label[p++] = '-';
-                    label[p++] = 'A'; label[p++] = 'P';
-                    const char* as = UintToStr(apIdx);
-                    for (int j = 0; as[j] && p < 8; ++j) label[p++] = as[j];
-                    for (UINT32 ri2 = 0; ri2 < total; ++ri2) {
-                        if (roster[ri2].ProcIndex == apIdx) {
-                            label[p++] = ' ';
-                            label[p++] = 'P'; label[p++] = '0'; label[p++] = '+';
-                            label[p++] = 'C';
-                            const char* cs2 = UintToStr(roster[ri2].Core);
-                            for (int j = 0; cs2[j] && p < 28; ++j) label[p++] = cs2[j];
-                            label[p++] = 'T';
-                            const char* ts = UintToStr(roster[ri2].Thread);
-                            for (int j = 0; ts[j] && p < 30; ++j) label[p++] = ts[j];
-                            break;
-                        }
-                    }
-                    label[p] = '\0';
-                }
-
-                // Detect outlier: >5% deviation from median (aggregate score)
-                bool outlier = false;
-                if (r.Score > 0) {
-                    UINT64 sc = r.PerCoreScore[static_cast<UINT32>(c)];
-                    UINT64 dev = (sc > r.Score) ? sc - r.Score : r.Score - sc;
-                    outlier = (dev * 100 / r.Score) > 5;
-                }
-
-                Color nameCol = outlier ? Theme::Current().Warning : Theme::Current().TextDim;
-                Renderer::DrawText(2, row, Renderer::Pad(label, 22), nameCol);
-
-                // Score columns: min / avg / max score for this core (if available),
-                // otherwise fall back to showing the per-core elapsed time.
-                UINT64 sc  = r.PerCoreScore[static_cast<UINT32>(c)];
-                UINT64 mn  = r.PerCoreMin[static_cast<UINT32>(c)];
-                UINT64 mx  = r.PerCoreMax[static_cast<UINT32>(c)];
-                bool hasScore = (sc > 0 || mn > 0 || mx > 0);
-                if (hasScore) {
-                    Renderer::DrawText(73, row, Renderer::Pad(UintToStr(sc), 11),
-                                       outlier ? Theme::Current().Warning : Theme::Current().Accent);
-                    Renderer::DrawText(49, row, Renderer::Pad(UintToStr(mn), 12), Theme::Current().TextDim);
-                    Renderer::DrawText(61, row, Renderer::Pad(UintToStr(mx), 12), Theme::Current().TextDim);
-                    Renderer::DrawText(84, row, Renderer::Pad(r.Unit, 9), Theme::Current().TextDim);
-                } else {
-                    UINT64 t = r.PerCoreTimeUs[static_cast<UINT32>(c)];
-                    Renderer::DrawText(37, row, Renderer::Pad(UintToStr(t), 12), Theme::Current().Success);
-                    Renderer::DrawText(84, row, Renderer::Pad("us", 9), Theme::Current().TextDim);
-                }
-            }
-
-            row++;
-        }
-
-        row++;
-        row = DrawSeparator(row);
-        UINT64 totalTime = 0;
-        for (UINTN i = 0; i < mLastResults.Size(); ++i)
-            totalTime += mLastResults[i].TotalTimeUs;
-
-        Renderer::DrawText(2, row,
-            Concat3("Total suite time: ", UintToStr(totalTime / 1000), " ms"),
-            Theme::Current().Text);
-        row++;
-
-        // Integrity error summary
-        UINT64 totalErrors = 0;
-        for (UINTN i = 0; i < mLastResults.Size(); ++i)
-            totalErrors += mLastResults[i].ErrorCount;
-        if (totalErrors > 0) {
-            Renderer::DrawText(2, row,
-                Concat3("!! RAM ERRORS DETECTED: ", UintToStr(totalErrors), " mismatches !!"),
-                Theme::Current().Error);
-            row++;
-        }
-
-        if (Timer::IsCalibrated()) {
-            Renderer::DrawText(2, row,
-                Concat3("TSC: ", UintToStr(Timer::CyclesPerUs()), " cycles/us"),
-                Theme::Current().TextDim);
-            if (!Timer::HasInvariantTSC()) {
-                row++;
-                Renderer::DrawText(2, row,
-                    "Warning: Invariant TSC not detected; timing may be imprecise",
-                    Theme::Current().Warning);
-            }
-        }
-
-        DrawFooter("[Up/Down] Scroll  [Esc] Back");
+        sResultsVp.Render(contentStart, viewRows);
+        DrawFooter("[Up/Dn/PgUp/PgDn/Home/End] Scroll  [Esc] Back");
         Renderer::Present();
 
         EFI_INPUT_KEY key = Renderer::WaitKey();
-        if (key.ScanCode == SCAN_UP && scroll > 0) --scroll;
-        else if (key.ScanCode == SCAN_DOWN && scroll + viewRows < resultCount) ++scroll;
-        else if (key.ScanCode == SCAN_ESC) return;
+        if (key.ScanCode == SCAN_ESC) return;
+        sResultsVp.HandleKey(key, viewRows);
     }
 }
 
@@ -1044,6 +1097,8 @@ void Tui::ShowResolutionPicker() {
 
 // ── Core Picker ───────────────────────────────────────────────
 
+static ScrollViewport sCorePickVp;
+
 void Tui::ShowCorePicker() {
     if (!SystemInfo::HasMpServices() || CoreSelection::Count() == 0) {
         Renderer::Clear();
@@ -1059,67 +1114,86 @@ void Tui::ShowCorePicker() {
     CoreSelection::ApInfo* roster = CoreSelection::GetAll();
     int cursor = 0;
 
+    // Fixed layout:
+    //   rows 0-2  : header
+    //   row  3    : blank
+    //   row  4    : selection info
+    //   row  5    : BSP toggle (DrawMenuItem — fixed, not in viewport)
+    //   rows 6+   : AP list via viewport
+    const int contentStart = 6;
+    const int footerRows   = 3;
+
     Renderer::FlushInput();
     while (true) {
-        Renderer::Clear();
-        int row = DrawHeader("Select Cores");
-        row++;
+        int viewRows = static_cast<int>(Renderer::Rows()) - contentStart - footerRows;
+        if (viewRows < 4) viewRows = 4;
 
-        // Count selected for header info
+        Renderer::Clear();
+        DrawHeader("Select Cores");
+
+        // Info line at row 4
         UINT32 selCount = CoreSelection::SelectedCount();
         bool   bspOn    = CoreSelection::GetIncludeBsp();
         {
-            char info[96];
-            int p = 0;
+            char info[96]; int p = 0;
             const char* ns = UintToStr(selCount);
             for (int j = 0; ns[j]; ++j) info[p++] = ns[j];
             for (const char* s = " of "; *s; ++s) info[p++] = *s;
             ns = UintToStr(apCount);
             for (int j = 0; ns[j]; ++j) info[p++] = ns[j];
             for (const char* s = " APs selected"; *s; ++s) info[p++] = *s;
-            if (bspOn) {
-                for (const char* s = " + BSP (Core 0)"; *s; ++s) info[p++] = *s;
-            }
+            if (bspOn) for (const char* s = " + BSP (Core 0)"; *s; ++s) info[p++] = *s;
             info[p] = '\0';
-            Renderer::DrawText(2, row, info, Theme::Current().TextDim);
+            Renderer::DrawText(2, 4, info, Theme::Current().TextDim);
         }
-        row++;
 
-        // BSP toggle row — toggled with [B], not cursor-navigable
-        DrawMenuItem(row, "Include BSP (Core 0) as benchmark worker",
-                     false, true, bspOn);
-        row++;
+        // BSP toggle at row 5 — stays outside viewport
+        DrawMenuItem(5, "Include BSP (Core 0) as benchmark worker", false, true, bspOn);
 
-        int menuStart = row;
-        int viewRows = static_cast<int>(Renderer::Rows()) - row - 6;
-        int scrollOff = 0;
-        if (cursor >= viewRows) scrollOff = cursor - viewRows + 1;
-
-        for (int i = 0; i < viewRows && (scrollOff + i) < static_cast<int>(apCount); ++i) {
-            auto& ap = roster[scrollOff + i];
-            char label[80];
+        // Rebuild AP list into viewport each frame (selection state changes)
+        sCorePickVp.ClearContent();
+        for (UINT32 i = 0; i < apCount; ++i) {
+            auto& ap = roster[i];
+            char label[ScrollViewport::MAX_WIDTH];
             int p = 0;
+            // Prefix: "> " cursor indicator + "[ ]" checkbox (mirroring DrawMenuItem layout)
+            label[p++] = ' '; label[p++] = ' ';
+            label[p++] = (static_cast<int>(i) == cursor) ? '>' : ' ';
+            label[p++] = ' ';
+            label[p++] = '[';
+            label[p++] = ap.Selected ? 'X' : ' ';
+            label[p++] = ']';
+            label[p++] = ' ';
+            // AP description
             for (const char* s = "AP "; *s; ++s) label[p++] = *s;
             const char* ns = UintToStr(ap.ProcIndex);
-            for (int j = 0; ns[j] && p < 10; ++j) label[p++] = ns[j];
-            while (p < 6) label[p++] = ' ';
-            for (const char* s = "  Pkg:"; *s; ++s) label[p++] = *s;
+            for (int j = 0; ns[j] && p < 14; ++j) label[p++] = ns[j];
+            while (p < 14) label[p++] = ' ';
+            for (const char* s = "  Pkg:"; *s && p < 96; ++s) label[p++] = *s;
             ns = UintToStr(ap.Package);
-            for (int j = 0; ns[j] && p < 70; ++j) label[p++] = ns[j];
-            for (const char* s = "  Core:"; *s; ++s) label[p++] = *s;
+            for (int j = 0; ns[j] && p < 96; ++j) label[p++] = ns[j];
+            for (const char* s = "  Core:"; *s && p < 96; ++s) label[p++] = *s;
             ns = UintToStr(ap.Core);
-            for (int j = 0; ns[j] && p < 70; ++j) label[p++] = ns[j];
-            for (const char* s = "  Thr:"; *s; ++s) label[p++] = *s;
+            for (int j = 0; ns[j] && p < 96; ++j) label[p++] = ns[j];
+            for (const char* s = "  Thr:"; *s && p < 96; ++s) label[p++] = *s;
             ns = UintToStr(ap.Thread);
-            for (int j = 0; ns[j] && p < 70; ++j) label[p++] = ns[j];
-            if (!ap.Available) {
-                for (const char* s = "  [disabled by firmware]"; *s && p < 78; ++s) label[p++] = *s;
-            }
+            for (int j = 0; ns[j] && p < 96; ++j) label[p++] = ns[j];
+            if (!ap.Available)
+                for (const char* s = "  [disabled by firmware]"; *s && p < 100; ++s) label[p++] = *s;
+            // Pad to full width so DrawTextBg fills background
+            int cols = static_cast<int>(Renderer::Columns());
+            while (p < cols && p < ScrollViewport::MAX_WIDTH - 1) label[p++] = ' ';
             label[p] = '\0';
-            DrawMenuItem(menuStart + i, label,
-                         (scrollOff + i) == cursor,
-                         true, ap.Selected);
+
+            bool hi = (static_cast<int>(i) == cursor);
+            if (hi)
+                sCorePickVp.AddLine(label, Theme::Current().HighlightTxt, Theme::Current().Highlight);
+            else
+                sCorePickVp.AddLine(label, Theme::Current().Text, Theme::Current().Background);
         }
+
+        sCorePickVp.ScrollToLine(cursor, viewRows);
+        sCorePickVp.Render(contentStart, viewRows);
 
         DrawFooter("[Up/Dn] Move  [Space] Toggle  [A]ll  [P]hysical  [1]PerPkg  [B]SP  [Esc] Done");
         Renderer::Present();
@@ -1127,8 +1201,7 @@ void Tui::ShowCorePicker() {
         EFI_INPUT_KEY key = Renderer::WaitKey();
         if (key.ScanCode == SCAN_UP && cursor > 0)
             --cursor;
-        else if (key.ScanCode == SCAN_DOWN &&
-                 cursor < static_cast<int>(apCount) - 1)
+        else if (key.ScanCode == SCAN_DOWN && cursor < static_cast<int>(apCount) - 1)
             ++cursor;
         else if (key.UnicodeChar == ' ' && roster[cursor].Available)
             roster[cursor].Selected = !roster[cursor].Selected;

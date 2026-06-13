@@ -1064,19 +1064,28 @@ void Tui::ShowCorePicker() {
 
         // Count selected for header info
         UINT32 selCount = CoreSelection::SelectedCount();
+        bool   bspOn    = CoreSelection::GetIncludeBsp();
         {
-            char info[80];
+            char info[96];
             int p = 0;
             const char* ns = UintToStr(selCount);
             for (int j = 0; ns[j]; ++j) info[p++] = ns[j];
             for (const char* s = " of "; *s; ++s) info[p++] = *s;
             ns = UintToStr(apCount);
             for (int j = 0; ns[j]; ++j) info[p++] = ns[j];
-            for (const char* s = " APs selected (BSP always runs on core 0)"; *s; ++s) info[p++] = *s;
+            for (const char* s = " APs selected"; *s; ++s) info[p++] = *s;
+            if (bspOn) {
+                for (const char* s = " + BSP (Core 0)"; *s; ++s) info[p++] = *s;
+            }
             info[p] = '\0';
             Renderer::DrawText(2, row, info, Theme::Current().TextDim);
         }
-        row += 2;
+        row++;
+
+        // BSP toggle row — toggled with [B], not cursor-navigable
+        DrawMenuItem(row, "Include BSP (Core 0) as benchmark worker",
+                     false, true, bspOn);
+        row++;
 
         int menuStart = row;
         int viewRows = static_cast<int>(Renderer::Rows()) - row - 6;
@@ -1109,7 +1118,7 @@ void Tui::ShowCorePicker() {
                          true, ap.Selected);
         }
 
-        DrawFooter("[Up/Down] Move  [Space] Toggle  [A]ll  [P]hysical  [1]PerPkg  [Esc] Done");
+        DrawFooter("[Up/Dn] Move  [Space] Toggle  [A]ll  [P]hysical  [1]PerPkg  [B]SP  [Esc] Done");
         Renderer::Present();
 
         EFI_INPUT_KEY key = Renderer::WaitKey();
@@ -1120,6 +1129,8 @@ void Tui::ShowCorePicker() {
             ++cursor;
         else if (key.UnicodeChar == ' ' && roster[cursor].Available)
             roster[cursor].Selected = !roster[cursor].Selected;
+        else if (key.UnicodeChar == 'b' || key.UnicodeChar == 'B')
+            CoreSelection::SetIncludeBsp(!CoreSelection::GetIncludeBsp());
         else if (key.UnicodeChar == 'a' || key.UnicodeChar == 'A')
             CoreSelection::SelectAll();
         else if (key.UnicodeChar == 'p' || key.UnicodeChar == 'P')

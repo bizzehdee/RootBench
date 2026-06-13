@@ -38,4 +38,9 @@ void SelectAll();
 void SelectPhysicalCoresOnly();  // Thread == 0 only (or sole thread on that core)
 void SelectOnePerPackage();      // first AP per socket
 
+// BSP participation: when true, BenchmarkRunner adds Core 0 as an
+// additional worker (sequential phase after APs). Defaults to false.
+void  SetIncludeBsp(bool include);
+bool  GetIncludeBsp();
+
 } // namespace CoreSelection

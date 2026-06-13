@@ -62,7 +62,9 @@ static UINT64 Median64(UINT64* arr, UINT32 count) {
 struct ProgressCtx {
     const char* Name;
     bool        MultiCore;
-    UINT32      CoreCount;
+    UINT32      CoreCount;    // total workers (APs + BSP if included)
+    bool        IncludeBsp;   // BSP is also running as a worker (sequential phase)
+    bool        IsBspPhase;   // currently in the BSP-only sequential phase
     // Core-cycle extra info (IsCoreCycle == true activates alternate display)
     bool        IsCoreCycle;
     UINT32      CycleCurrentCore;  // 1-based
@@ -130,6 +132,12 @@ static void DrawLiveProgress(const ProgressReport& r, void* vctx) {
             p = ProgAppend(mb, p, " cores x ");
             p = ProgAppend(mb, p, UintToStr(pc->CycleTotalRuns));
             p = ProgAppend(mb, p, " runs)");
+        } else if (pc->MultiCore && pc->IncludeBsp && pc->IsBspPhase) {
+            p = ProgAppend(mb, p, "BSP Phase (Core 0)");
+        } else if (pc->MultiCore && pc->IncludeBsp && pc->CoreCount > 1) {
+            p = ProgAppend(mb, p, "Multi-core (");
+            p = ProgAppend(mb, p, UintToStr(pc->CoreCount - 1));
+            p = ProgAppend(mb, p, " APs + BSP)");
         } else if (pc->MultiCore && pc->CoreCount > 0) {
             p = ProgAppend(mb, p, "Multi-core (");
             p = ProgAppend(mb, p, UintToStr(pc->CoreCount));
@@ -291,13 +299,19 @@ BenchmarkResult BenchmarkRunner::RunSingle(IBenchmark* benchmark, UINTN runs,
 
     result.CoreCount = multiCore ? apCount : 1;
 
+    bool includeBsp = multiCore && CoreSelection::GetIncludeBsp()
+                      && (benchmark->GetThreadingMode() != ThreadingMode::SingleOnly);
+    if (includeBsp) result.CoreCount = apCount + 1;  // APs + BSP
+
     // Set up live progress callback for long benchmarks
     bool isLong = (benchmark->GetDurationClass() == DurationClass::Long);
-    ProgressCtx pCtx;
+    ProgressCtx pCtx = {};
     if (isLong) {
-        pCtx.Name      = benchmark->GetName();
-        pCtx.MultiCore = multiCore && result.CoreCount > 1;
-        pCtx.CoreCount = result.CoreCount;
+        pCtx.Name       = benchmark->GetName();
+        pCtx.MultiCore  = multiCore && result.CoreCount > 1;
+        pCtx.CoreCount  = result.CoreCount;  // already includes BSP when includeBsp is set
+        pCtx.IncludeBsp = includeBsp;
+        pCtx.IsBspPhase = false;
         benchmark->SetProgressCallback(DrawLiveProgress, &pCtx);
     }
 
@@ -324,7 +338,7 @@ BenchmarkResult BenchmarkRunner::RunSingle(IBenchmark* benchmark, UINTN runs,
         if (multiCore) {
             ApContext ctx;
             ctx.Benchmark    = benchmark;
-            ctx.TotalWorkers = apCount;
+            ctx.TotalWorkers = includeBsp ? apCount + 1 : apCount;
             ctx.WorkerIndex  = 0;
 
             Timer::Start();
@@ -335,9 +349,20 @@ BenchmarkResult BenchmarkRunner::RunSingle(IBenchmark* benchmark, UINTN runs,
             UINT64 elapsed = Timer::ElapsedUs();
 
             if (EFI_ERROR(status)) {
+                // AP dispatch failed — fall back to BSP-only run
                 Timer::Start();
                 benchmark->Run();
                 elapsed = Timer::ElapsedUs();
+            } else if (includeBsp) {
+                // BSP sequential phase: BSP runs as the last worker slot
+                if (isLong) {
+                    pCtx.IsBspPhase = true;
+                    benchmark->SetProgressCallback(DrawLiveProgress, &pCtx);
+                }
+                Timer::Start();
+                benchmark->RunCore(apCount, ctx.TotalWorkers);
+                elapsed += Timer::ElapsedUs();
+                if (isLong) pCtx.IsBspPhase = false;
             }
 
             result.RunTimesUs.PushBack(elapsed);

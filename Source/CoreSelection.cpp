@@ -5,6 +5,7 @@ namespace CoreSelection {
 
 static ApInfo sAps[MAX_APS];
 static UINT32 sCount = 0;
+static bool   sIncludeBsp = true;
 
 void Init() {
     sCount = 0;
@@ -87,6 +88,9 @@ void SelectPhysicalCoresOnly() {
         sAps[i].Selected = !siblingExists;
     }
 }
+
+void SetIncludeBsp(bool include) { sIncludeBsp = include; }
+bool GetIncludeBsp()             { return sIncludeBsp; }
 
 void SelectOnePerPackage() {
     for (UINT32 i = 0; i < sCount; ++i) {

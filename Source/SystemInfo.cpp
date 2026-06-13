@@ -486,18 +486,19 @@ static void DetectSpd() {
             break;
         }
 
-        if (devType != 0x0C) continue;                 // DDR3 and below: skip
+        if (devType != 0x0C) continue;                 // DDR4: skip non-DDR4
 
+        // DDR4 SPD (JEDEC SPD4) — all timings in MTB (Medium Timebase) units
         UINT8 tCKmin  = ReadSmbByte(base, slot, 18);  // min cycle time (MTB = 0.125 ns)
-        UINT8 tAAmin  = ReadSmbByte(base, slot, 24);  // CAS Latency min time
-        UINT8 tRCDmin = ReadSmbByte(base, slot, 25);  // RAS-to-CAS delay min
-        UINT8 tRPmin  = ReadSmbByte(base, slot, 26);  // Row Precharge min
-        UINT8 b27     = ReadSmbByte(base, slot, 27);  // [7:4]=tRAShi [3:0]=tRChi
-        UINT8 tRASLo  = ReadSmbByte(base, slot, 28);  // tRAS lower 8 bits
+        UINT8 tAAmin  = ReadSmbByte(base, slot, 23);  // CAS Latency min time
+        UINT8 tRCDmin = ReadSmbByte(base, slot, 24);  // RAS-to-CAS delay min
+        UINT8 tRPmin  = ReadSmbByte(base, slot, 25);  // Row Precharge min
+        UINT8 tRASLo  = ReadSmbByte(base, slot, 26);  // tRASmin lower 8 bits
+        UINT8 b27     = ReadSmbByte(base, slot, 27);  // [3:0]=tRAS_ext [7:4]=tRC_ext
 
         if (tCKmin == 0 || tCKmin == 0xFF) continue;
 
-        UINT32 tRAS = ((UINT32)(b27 >> 4) << 8) | tRASLo;
+        UINT32 tRAS = ((UINT32)(b27 & 0x0F) << 8) | tRASLo;
 
         // Cycles = ceil(timing_MTB / tCKmin_MTB)
         auto CeilDiv = [](UINT32 a, UINT32 b) -> UINT32 {

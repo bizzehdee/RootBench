@@ -48,6 +48,10 @@ public:
     virtual UINT64      GetScore() const { return 0; }
     virtual const char* GetUnit()  const { return ""; }
 
+    // Return false for pass/fail tests (e.g. integrity) so they don't skew
+    // the category composite score.
+    virtual bool IncludeInCategoryScore() const { return true; }
+
     virtual void SetProgressCallback(ProgressFn /*fn*/, void* /*ctx*/) {}
 
     virtual void Setup()    {}

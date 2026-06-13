@@ -17,6 +17,7 @@ private:
     void RunBenchmarks(const UINTN* indices, const RunMode* modes,
                        UINTN count, UINTN runs, bool coreCycleAllCores);
     void ShowResults();
+    void ShowCategoryResults(const char* category);
     void ShowSystemInfo();
     void ShowResolutionPicker();
     void ShowThemePicker();
@@ -31,4 +32,5 @@ private:
     void DrawProgressBar(int row, UINTN current, UINTN total);
 
     Vector<BenchmarkResult> mLastResults;
+    const char*             mLastCategory = nullptr;
 };

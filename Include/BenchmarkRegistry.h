@@ -12,6 +12,12 @@ public:
     static UINTN        Count();
     static void         Clear();
 
+    // Dynamically discovered unique category names (order of first appearance).
+    static UINT32       GetCategoryCount();
+    static const char*  GetCategoryName(UINT32 index);
+    static UINT32       GetBenchmarksInCategory(const char* category,
+                                                 IBenchmark** out, UINT32 maxCount);
+
 private:
     static constexpr UINTN MAX_BENCHMARKS = 32;
     static IBenchmark* sBenchmarks[MAX_BENCHMARKS];

@@ -33,6 +33,15 @@ extern "C" VOID EFIAPI ApSingleProc(VOID* Buffer) {
     ctx->Benchmark->RunCore(0, 1);
 }
 
+// ── Category run context ──────────────────────────────────────
+// Set by RunCategory so both DrawProgress and DrawLiveProgress can show
+// "CPU Suite (3/8)" context. Null when not in a category run.
+static struct {
+    const char* Name;
+    UINT32      Current;  // 1-based benchmark index within the category
+    UINT32      Total;
+} sCatCtx = { nullptr, 0, 0 };
+
 // ── Helpers ──────────────────────────────────────────────────
 
 static UINT64 Median64(UINT64* arr, UINT32 count) {
@@ -89,6 +98,20 @@ static void DrawLiveProgress(const ProgressReport& r, void* vctx) {
     Renderer::FillRow(0, Theme::Current().HeaderBorder);
     Renderer::DrawText(2, 0, "BENCHMARK IN PROGRESS", Theme::Current().HeaderText);
     Renderer::FillRow(1, Theme::Current().Separator);
+
+    // Category context (row 2) when running a category suite
+    if (sCatCtx.Name) {
+        static char catLine[96];
+        int p = ProgAppend(catLine, 0, "  ");
+        p = ProgAppend(catLine, p, sCatCtx.Name);
+        p = ProgAppend(catLine, p, " Suite  (");
+        p = ProgAppend(catLine, p, UintToStr(sCatCtx.Current));
+        p = ProgAppend(catLine, p, " / ");
+        p = ProgAppend(catLine, p, UintToStr(sCatCtx.Total));
+        p = ProgAppend(catLine, p, ")");
+        catLine[p] = '\0';
+        Renderer::DrawText(0, 2, catLine, Theme::Current().TextDim);
+    }
 
     // Benchmark name (left) + mode (right) on row 3
     {
@@ -210,7 +233,17 @@ static void DrawLiveProgress(const ProgressReport& r, void* vctx) {
 static void DrawProgress(const char* title, const char* name,
                          UINTN current, UINTN total, bool multiCore) {
     Renderer::Clear();
-    Renderer::DrawText(2, 1, title, Theme::Current().Accent);
+
+    // In a category run, replace the generic title with "<Category> Suite"
+    if (sCatCtx.Name) {
+        static char catTitle[64];
+        int p = ProgAppend(catTitle, 0, sCatCtx.Name);
+        p = ProgAppend(catTitle, p, " Suite");
+        catTitle[p] = '\0';
+        Renderer::DrawText(2, 1, catTitle, Theme::Current().Accent);
+    } else {
+        Renderer::DrawText(2, 1, title, Theme::Current().Accent);
+    }
     Renderer::DrawText(2, 3, "Progress:", Theme::Current().Text);
 
     char buf[64];
@@ -328,9 +361,10 @@ BenchmarkResult BenchmarkRunner::RunSingle(IBenchmark* benchmark, UINTN runs,
         benchmark->SetProgressCallback(nullptr, nullptr);
     }
 
-    result.TotalTimeUs  = Stats::GetSum(result.RunTimesUs);
-    result.Score        = benchmark->GetScore();
-    result.Unit         = benchmark->GetUnit();
+    result.TotalTimeUs   = Stats::GetSum(result.RunTimesUs);
+    result.Score         = benchmark->GetScore();
+    result.Unit          = benchmark->GetUnit();
+    result.IncludeInScore = benchmark->IncludeInCategoryScore();
     return result;
 }
 
@@ -475,6 +509,43 @@ Vector<BenchmarkResult> BenchmarkRunner::RunAll(UINTN runs) {
     return RunSelected(indices, modes, count, runs);
 }
 
+// ── RunCategory ──────────────────────────────────────────────
+
+Vector<BenchmarkResult> BenchmarkRunner::RunCategory(const char* category, UINTN runs) {
+    IBenchmark** all   = BenchmarkRegistry::GetAll();
+    UINTN        total = BenchmarkRegistry::Count();
+
+    UINTN   indices[32];
+    RunMode modes[32];
+    UINTN   cnt = 0;
+
+    for (UINTN i = 0; i < total && cnt < 32; ++i) {
+        if (StrCmp(all[i]->GetCategory(), category) != 0) continue;
+        indices[cnt] = i;
+        ThreadingMode tm = all[i]->GetThreadingMode();
+        if (tm == ThreadingMode::SingleOnly) {
+            modes[cnt] = RunMode::SingleCore;
+        } else if (tm == ThreadingMode::MultiOnly ||
+                   all[i]->GetDurationClass() == DurationClass::Long) {
+            modes[cnt] = RunMode::MultiCore;
+        } else {
+            modes[cnt] = RunMode::SingleCore;
+        }
+        ++cnt;
+    }
+
+    if (cnt == 0) return Vector<BenchmarkResult>();
+
+    sCatCtx.Name    = category;
+    sCatCtx.Current = 1;
+    sCatCtx.Total   = static_cast<UINT32>(cnt);
+
+    Vector<BenchmarkResult> results = RunSelected(indices, modes, cnt, runs);
+
+    sCatCtx.Name = nullptr;
+    return results;
+}
+
 // ── RunSelected ──────────────────────────────────────────────
 
 Vector<BenchmarkResult> BenchmarkRunner::RunSelected(
@@ -489,6 +560,7 @@ Vector<BenchmarkResult> BenchmarkRunner::RunSelected(
     for (UINTN i = 0; i < count; ++i) {
         if (indices[i] >= totalBench) continue;
         IBenchmark* bm = all[indices[i]];
+        if (sCatCtx.Name) sCatCtx.Current = static_cast<UINT32>(i + 1);
         bool isCC = (modes[i] == RunMode::CoreCycle);
         DrawProgress("Running Benchmarks", bm->GetName(),
                      i + 1, count, modes[i] == RunMode::MultiCore);

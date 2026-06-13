@@ -17,6 +17,7 @@ struct BenchmarkResult {
     Vector<UINT64>  RunTimesUs;
     UINT64          TotalTimeUs;
     bool            MultiCore;
+    bool            IncludeInScore;  // from IBenchmark::IncludeInCategoryScore()
     UINT32          CoreCount;
     RunMode         RunModeUsed;
 
@@ -31,7 +32,7 @@ struct BenchmarkResult {
     BenchmarkResult()
         : Name(""), Category(""), Unit(""), Score(0),
           Iterations(0), ErrorCount(0), TotalTimeUs(0),
-          MultiCore(false), CoreCount(1),
+          MultiCore(false), IncludeInScore(true), CoreCount(1),
           RunModeUsed(RunMode::SingleCore),
           PerCoreSampleCount(0)
     {

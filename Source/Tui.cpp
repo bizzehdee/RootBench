@@ -129,77 +129,145 @@ void Tui::Run() {
 // ── Main Menu ────────────────────────────────────────────────
 
 void Tui::ShowMainMenu() {
-    const char* options[] = {
+    // Static entries before the dynamic category block
+    static const char* kPreCat[] = {
         "Run All Short Benchmarks",
         "Run All Long Benchmarks",
+    };
+    constexpr int kPreCount = 2;
+
+    // Static entries after the dynamic category block
+    static const char* kPostCat[] = {
         "Select Benchmarks",
         "View Last Results",
         "System Info",
         "Change Resolution",
         "Change Theme",
         "Select Cores",
-        "Shutdown"
+        "Shutdown",
     };
-    constexpr int OPT_COUNT = 9;
-    int cursor = 0;
+    constexpr int kPostCount = 7;
+    constexpr int kShutdownPost = 6; // index within kPostCat
 
+    // Build dynamic category label storage (max 8 discovered categories)
+    static char catLabels[8][48];
+    UINT32 catCount = BenchmarkRegistry::GetCategoryCount();
+    if (catCount > 8) catCount = 8;
+    for (UINT32 i = 0; i < catCount; ++i) {
+        int p = 0;
+        for (const char* s = "Run All "; *s; ++s) catLabels[i][p++] = *s;
+        const char* cn = BenchmarkRegistry::GetCategoryName(i);
+        for (int j = 0; cn[j] && p < 46; ++j) catLabels[i][p++] = cn[j];
+        catLabels[i][p] = '\0';
+    }
+
+    // Flat option array (max 2 + 8 + 7 = 17)
+    const char* opts[17];
+    for (int i = 0; i < kPreCount; ++i) opts[i] = kPreCat[i];
+    for (UINT32 i = 0; i < catCount; ++i) opts[kPreCount + i] = catLabels[i];
+    for (int i = 0; i < kPostCount; ++i) opts[kPreCount + catCount + i] = kPostCat[i];
+    int totalOpts = kPreCount + (int)catCount + kPostCount;
+
+    int cursor = 0;
     Renderer::FlushInput();
     while (true) {
+        // Rebuild category block each iteration in case registry changed
+        catCount = BenchmarkRegistry::GetCategoryCount();
+        if (catCount > 8) catCount = 8;
+        for (UINT32 i = 0; i < catCount; ++i) {
+            int p = 0;
+            for (const char* s = "Run All "; *s; ++s) catLabels[i][p++] = *s;
+            const char* cn = BenchmarkRegistry::GetCategoryName(i);
+            for (int j = 0; cn[j] && p < 46; ++j) catLabels[i][p++] = cn[j];
+            catLabels[i][p] = '\0';
+            opts[kPreCount + i] = catLabels[i];
+        }
+        for (int i = 0; i < kPostCount; ++i) opts[kPreCount + catCount + i] = kPostCat[i];
+        totalOpts = kPreCount + (int)catCount + kPostCount;
+        if (cursor >= totalOpts) cursor = totalOpts - 1;
+
         Renderer::Clear();
         int row = DrawHeader("UEFI BENCHMARK SUITE");
         row++;
 
         int menuStart = row;
-        for (int i = 0; i < OPT_COUNT; ++i)
-            DrawMenuItem(menuStart + i, options[i], i == cursor);
+        for (int i = 0; i < totalOpts; ++i)
+            DrawMenuItem(menuStart + i, opts[i], i == cursor);
 
         DrawFooter("[Up/Down] Navigate  [Enter] Select");
         Renderer::Present();
 
         EFI_INPUT_KEY key = Renderer::WaitKey();
         if (key.ScanCode == SCAN_UP)
-            cursor = (cursor - 1 + OPT_COUNT) % OPT_COUNT;
+            cursor = (cursor - 1 + totalOpts) % totalOpts;
         else if (key.ScanCode == SCAN_DOWN)
-            cursor = (cursor + 1) % OPT_COUNT;
+            cursor = (cursor + 1) % totalOpts;
         else if (key.UnicodeChar == '\r' || key.UnicodeChar == '\n') {
-            switch (cursor) {
-                case 0: { // Run All Short
-                    IBenchmark** all  = BenchmarkRegistry::GetAll();
-                    UINTN total       = BenchmarkRegistry::Count();
-                    UINTN indices[32]; RunMode modes[32]; UINTN cnt = 0;
-                    for (UINTN i = 0; i < total && cnt < 32; ++i) {
-                        if (all[i]->GetDurationClass() == DurationClass::Short) {
-                            indices[cnt] = i;
-                            modes[cnt] = (all[i]->GetThreadingMode() == ThreadingMode::MultiOnly)
-                                         ? RunMode::MultiCore : RunMode::SingleCore;
-                            ++cnt;
-                        }
+            if (cursor == 0) {
+                // Run All Short
+                IBenchmark** all = BenchmarkRegistry::GetAll();
+                UINTN total = BenchmarkRegistry::Count();
+                UINTN indices[32]; RunMode modes[32]; UINTN cnt = 0;
+                for (UINTN i = 0; i < total && cnt < 32; ++i) {
+                    if (all[i]->GetDurationClass() == DurationClass::Short) {
+                        indices[cnt] = i;
+                        modes[cnt] = (all[i]->GetThreadingMode() == ThreadingMode::MultiOnly)
+                                      ? RunMode::MultiCore : RunMode::SingleCore;
+                        ++cnt;
                     }
-                    if (cnt) ShowRunCountPicker(indices, modes, cnt);
-                    break;
                 }
-                case 1: { // Run All Long
-                    IBenchmark** all  = BenchmarkRegistry::GetAll();
-                    UINTN total       = BenchmarkRegistry::Count();
-                    UINTN indices[32]; RunMode modes[32]; UINTN cnt = 0;
-                    for (UINTN i = 0; i < total && cnt < 32; ++i) {
-                        if (all[i]->GetDurationClass() == DurationClass::Long) {
-                            indices[cnt] = i;
-                            modes[cnt] = (all[i]->GetThreadingMode() != ThreadingMode::SingleOnly)
-                                         ? RunMode::MultiCore : RunMode::SingleCore;
-                            ++cnt;
-                        }
+                if (cnt) ShowRunCountPicker(indices, modes, cnt);
+            } else if (cursor == 1) {
+                // Run All Long
+                IBenchmark** all = BenchmarkRegistry::GetAll();
+                UINTN total = BenchmarkRegistry::Count();
+                UINTN indices[32]; RunMode modes[32]; UINTN cnt = 0;
+                for (UINTN i = 0; i < total && cnt < 32; ++i) {
+                    if (all[i]->GetDurationClass() == DurationClass::Long) {
+                        indices[cnt] = i;
+                        modes[cnt] = (all[i]->GetThreadingMode() != ThreadingMode::SingleOnly)
+                                      ? RunMode::MultiCore : RunMode::SingleCore;
+                        ++cnt;
                     }
-                    if (cnt) ShowRunCountPicker(indices, modes, cnt);
-                    break;
                 }
-                case 2: ShowBenchmarkSelection(); break;
-                case 3: ShowResults();            break;
-                case 4: ShowSystemInfo();         break;
-                case 5: ShowResolutionPicker();   break;
-                case 6: ShowThemePicker();        break;
-                case 7: ShowCorePicker();         break;
-                case 8: return;
+                if (cnt) ShowRunCountPicker(indices, modes, cnt);
+            } else if (cursor >= kPreCount && cursor < kPreCount + (int)catCount) {
+                // Run All <Category>
+                int catIdx = cursor - kPreCount;
+                const char* catName = BenchmarkRegistry::GetCategoryName((UINT32)catIdx);
+                IBenchmark** all = BenchmarkRegistry::GetAll();
+                UINTN total = BenchmarkRegistry::Count();
+                UINTN indices[32]; RunMode modes[32]; UINTN cnt = 0;
+                for (UINTN i = 0; i < total && cnt < 32; ++i) {
+                    if (StrCmp(all[i]->GetCategory(), catName) != 0) continue;
+                    indices[cnt] = i;
+                    ThreadingMode tm = all[i]->GetThreadingMode();
+                    if (tm == ThreadingMode::SingleOnly) {
+                        modes[cnt] = RunMode::SingleCore;
+                    } else if (tm == ThreadingMode::MultiOnly ||
+                               all[i]->GetDurationClass() == DurationClass::Long) {
+                        modes[cnt] = RunMode::MultiCore;
+                    } else {
+                        modes[cnt] = RunMode::SingleCore;
+                    }
+                    ++cnt;
+                }
+                if (cnt) {
+                    mLastCategory = catName;
+                    ShowRunCountPicker(indices, modes, cnt);
+                    mLastCategory = nullptr;
+                }
+            } else {
+                int postIdx = cursor - kPreCount - (int)catCount;
+                switch (postIdx) {
+                    case 0: ShowBenchmarkSelection(); break;
+                    case 1: ShowResults();            break;
+                    case 2: ShowSystemInfo();         break;
+                    case 3: ShowResolutionPicker();   break;
+                    case 4: ShowThemePicker();        break;
+                    case 5: ShowCorePicker();         break;
+                    case kShutdownPost: return;
+                }
             }
         }
     }
@@ -460,9 +528,114 @@ void Tui::ShowRunCountPicker(const UINTN* indices, const RunMode* modes,
 
 void Tui::RunBenchmarks(const UINTN* indices, const RunMode* modes,
                         UINTN count, UINTN runs, bool coreCycleAllCores) {
-    mLastResults = BenchmarkRunner::RunSelected(indices, modes, count, runs,
-                                                coreCycleAllCores);
-    ShowResults();
+    if (mLastCategory) {
+        mLastResults = BenchmarkRunner::RunCategory(mLastCategory, runs);
+        const char* cat = mLastCategory;
+        mLastCategory = nullptr;
+        ShowCategoryResults(cat);
+    } else {
+        mLastResults = BenchmarkRunner::RunSelected(indices, modes, count, runs,
+                                                    coreCycleAllCores);
+        ShowResults();
+    }
+}
+
+// ── Category Results ─────────────────────────────────────────
+
+void Tui::ShowCategoryResults(const char* category) {
+    if (mLastResults.Empty()) { ShowResults(); return; }
+
+    // Build header title: "<Category> BENCHMARK RESULTS"
+    static char hdrTitle[80];
+    {
+        int p = 0;
+        for (const char* s = category; *s && p < 50; ++s) hdrTitle[p++] = *s;
+        for (const char* s = " BENCHMARK RESULTS"; *s && p < 78; ++s) hdrTitle[p++] = *s;
+        hdrTitle[p] = '\0';
+    }
+
+    Renderer::FlushInput();
+    while (true) {
+        Renderer::Clear();
+        int row = DrawHeader(hdrTitle);
+        row++;
+
+        // Column headers
+        Renderer::DrawText(2,  row, Renderer::Pad("Benchmark",  36), Theme::Current().Accent);
+        Renderer::DrawText(38, row, Renderer::Pad("Score",      14), Theme::Current().Accent);
+        Renderer::DrawText(52, row, Renderer::Pad("Unit",       12), Theme::Current().Accent);
+        Renderer::DrawText(64, row, "Avg time (ms)",              Theme::Current().Accent);
+        row++;
+        row = DrawSeparator(row);
+
+        UINT64 compositeSum   = 0;
+        UINT32 compositeCount = 0;
+
+        for (UINTN i = 0; i < mLastResults.Size(); ++i) {
+            auto& r = mLastResults[i];
+            if (StrCmp(r.Category, category) != 0) continue;
+
+            Renderer::DrawText(2, row, Renderer::Pad(r.Name, 36), Theme::Current().Text);
+
+            if (r.ErrorCount > 0) {
+                // Integrity-style test with errors
+                static char errStr[32];
+                int p = 0;
+                for (const char* s = "ERRORS: "; *s; ++s) errStr[p++] = *s;
+                const char* ns = UintToStr(r.ErrorCount);
+                for (int j = 0; ns[j]; ++j) errStr[p++] = ns[j];
+                errStr[p] = '\0';
+                Renderer::DrawText(38, row, Renderer::Pad(errStr, 14), Theme::Current().Error);
+            } else if (r.Score > 0) {
+                Renderer::DrawText(38, row, Renderer::Pad(UintToStr(r.Score), 14), Theme::Current().Success);
+                Renderer::DrawText(52, row, Renderer::Pad(r.Unit, 12),            Theme::Current().TextDim);
+                if (r.IncludeInScore) {
+                    compositeSum += r.Score;
+                    ++compositeCount;
+                }
+            } else if (!r.IncludeInScore) {
+                Renderer::DrawText(38, row, Renderer::Pad("--", 14),        Theme::Current().TextDim);
+                Renderer::DrawText(52, row, "[pass/fail]",                  Theme::Current().TextDim);
+            } else {
+                Renderer::DrawText(38, row, Renderer::Pad("--", 14),        Theme::Current().TextDim);
+            }
+
+            // Avg elapsed time in ms
+            UINT64 avgUs = Stats::GetAverage(r.RunTimesUs);
+            Renderer::DrawText(64, row, Renderer::Pad(UintToStr(avgUs / 1000), 12), Theme::Current().TextDim);
+
+            row++;
+        }
+
+        row++;
+        row = DrawSeparator(row);
+
+        // Composite score line
+        if (compositeCount > 1) {
+            UINT64 avg = compositeSum / compositeCount;
+            Renderer::DrawText(2,  row, "Composite (avg raw score):", Theme::Current().Accent);
+            Renderer::DrawText(38, row, Renderer::Pad(UintToStr(avg), 14), Theme::Current().Accent);
+            Renderer::DrawText(52, row, "(mixed units)", Theme::Current().TextDim);
+            row++;
+        }
+
+        // Total time
+        UINT64 totalUs = 0;
+        for (UINTN i = 0; i < mLastResults.Size(); ++i) totalUs += mLastResults[i].TotalTimeUs;
+        Renderer::DrawText(2, row,
+            Concat3("Total suite time: ", UintToStr(totalUs / 1000), " ms"),
+            Theme::Current().Text);
+
+        DrawFooter("[Enter] Detailed View  [Esc] Back");
+        Renderer::Present();
+
+        EFI_INPUT_KEY key = Renderer::WaitKey();
+        if (key.ScanCode == SCAN_ESC) return;
+        if (key.UnicodeChar == '\r' || key.UnicodeChar == '\n') {
+            ShowResults();
+            return;
+        }
+    }
 }
 
 // ── Results ──────────────────────────────────────────────────

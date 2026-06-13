@@ -28,4 +28,9 @@ public:
     static Vector<BenchmarkResult> RunSelected(
         const UINTN* indices, const RunMode* modes, UINTN count, UINTN runs,
         bool coreCycleAllCores = true);
+
+    // Run every benchmark whose GetCategory() matches `category`, using
+    // multi-core mode for long/multi benchmarks and single-core otherwise.
+    // Sets the category progress context so the live display shows "X Suite (N/M)".
+    static Vector<BenchmarkResult> RunCategory(const char* category, UINTN runs);
 };

@@ -20,6 +20,7 @@ public:
     // MB/s verified (writes + reads = 2× bytes per pattern × 4 patterns)
     UINT64      GetScore() const override { return mTotalBytes / mBudgetUs; }
     const char* GetUnit()  const override { return "MB/s"; }
+    bool        IncludeInCategoryScore() const override { return false; }
     UINT64      GetErrors() const { return mErrorCount; }
 
     void Setup()    override { BigBuffer::AddRef(); }

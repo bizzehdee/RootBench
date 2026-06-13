@@ -21,6 +21,14 @@ static UINT32 sL3CacheKB       = 0;
 static UINT32 sMemSpeedMHz     = 0;
 static UINT32 sMemConfigSpeed  = 0;
 static UINT32 sMemChannelCount = 0;
+static UINT32 sMemVoltageMv    = 0;
+static char   sMemType[8]      = "Unknown";
+
+static UINT32 sSpdTCL   = 0;
+static UINT32 sSpdTRCD  = 0;
+static UINT32 sSpdTRP   = 0;
+static UINT32 sSpdTRAS  = 0;
+static bool   sSpdDdr5  = false;
 
 // ── CPUID helpers ────────────────────────────────────────────
 static void CpuidRaw(UINT32 leaf, UINT32 subleaf,
@@ -296,6 +304,26 @@ static void ParseSmbiosTable(const UINT8* start, UINT32 len) {
                     if (cs > 0 && sMemConfigSpeed == 0) sMemConfigSpeed = cs;
                 }
 
+                // Memory type (offset 0x12)
+                if (sMemType[0] == 'U') { // still "Unknown"
+                    UINT8 mt = p[0x12];
+                    const char* typeName = nullptr;
+                    if      (mt == 0x1A) typeName = "DDR4";
+                    else if (mt == 0x1B) typeName = "LPDDR3";
+                    else if (mt == 0x1E) typeName = "LPDDR4";
+                    else if (mt == 0x1F) typeName = "LPDDR4X";
+                    else if (mt == 0x22) typeName = "DDR5";
+                    else if (mt == 0x23) typeName = "LPDDR5";
+                    else if (mt == 0x18) typeName = "DDR3";
+                    if (typeName) StrCopy(sMemType, typeName, 8);
+                }
+
+                // Configured voltage in mV (SMBIOS 2.8+, offset 0x26, length >= 0x28)
+                if (sMemVoltageMv == 0 && length >= 0x28) {
+                    UINT16 mv = *reinterpret_cast<const UINT16*>(p + 0x26);
+                    if (mv > 0) sMemVoltageMv = mv;
+                }
+
                 // Collect unique bank locator strings for channel count
                 const char* bankStr = SmbiosGetString(p, p[0x11]);
                 if (bankStr[0] != '\0' && bankCount < 8) {
@@ -351,6 +379,139 @@ static void DetectSmbios() {
         ParseSmbiosTable(tableStart, tableLen);
 }
 
+// ── SPD via SMBus I/O ─────────────────────────────────────────
+// Reads DDR4 DRAM timings (tCL/tRCD/tRP/tRAS) from DIMM SPD EEPROMs.
+// SMBus controller is located by scanning PCI bus 0 for class 0x0C/0x05.
+// All I/O is via port IN/OUT (CPL=0 UEFI pre-boot environment).
+
+static void IoOutB(UINT16 port, UINT8 val) {
+    __asm__ volatile("outb %0, %1" : : "a"(val), "Nd"(port));
+}
+static UINT8 IoInB(UINT16 port) {
+    UINT8 v;
+    __asm__ volatile("inb %1, %0" : "=a"(v) : "Nd"(port));
+    return v;
+}
+static UINT32 PciCfgRead32Spd(UINT8 dev, UINT8 fn, UINT8 off) {
+    UINT32 addr = 0x80000000U | ((UINT32)(dev & 0x1F) << 11) |
+                  ((UINT32)(fn & 7) << 8) | (off & 0xFC);
+    __asm__ volatile("outl %0, %1" : : "a"(addr), "Nd"((UINT16)0x0CF8));
+    UINT32 data;
+    __asm__ volatile("inl %1, %0" : "=a"(data) : "Nd"((UINT16)0x0CFC));
+    return data;
+}
+
+static UINT16 FindSmbusIoBase() {
+    // Scan bus 0 for an SMBus host controller (PCI class 0x0C, subclass 0x05).
+    for (UINT8 dev = 0; dev < 32; ++dev) {
+        for (UINT8 fn = 0; fn < 8; ++fn) {
+            UINT32 id = PciCfgRead32Spd(dev, fn, 0x00);
+            if ((id & 0xFFFF) == 0xFFFF) { if (fn == 0) break; continue; }
+            UINT32 cls = PciCfgRead32Spd(dev, fn, 0x08);
+            if (((cls >> 24) & 0xFF) != 0x0C) continue;
+            if (((cls >> 16) & 0xFF) != 0x05) continue;
+            // SMBus found — locate its I/O BAR (bit 0 = I/O type)
+            for (UINT8 b = 0x10; b <= 0x24; b += 4) {
+                UINT32 bar = PciCfgRead32Spd(dev, fn, b);
+                if (!(bar & 1)) continue;
+                UINT16 ioAddr = (UINT16)(bar & 0xFFFE);
+                if (ioAddr > 0x0F) return ioAddr;
+            }
+        }
+    }
+    return 0;
+}
+
+static UINT8 ReadSmbByte(UINT16 base, UINT8 addr, UINT8 reg) {
+    // Poll HOST_BUSY (bit 0) until idle
+    for (UINT32 t = 100000; t && (IoInB(base) & 1); --t) ;
+    if (IoInB(base) & 1) return 0xFF;             // bus stuck
+
+    IoOutB(base,     0x1E);                        // clear status bits
+    IoOutB(base + 4, (UINT8)((addr << 1) | 1));   // slave address + READ bit
+    IoOutB(base + 3, reg);                         // SPD byte offset
+    IoOutB(base + 2, 0x48);                        // START | BYTE_DATA command
+
+    // Poll for INTR (bit 1) or any error (bits 2-4)
+    UINT8 sts = 0;
+    for (UINT32 t = 500000; t; --t) {
+        sts = IoInB(base);
+        if (sts & 0x1E) break;
+    }
+    return (sts & 0x02) ? IoInB(base + 5) : (UINT8)0xFF;
+}
+
+static void DetectSpd() {
+    UINT16 base = FindSmbusIoBase();
+    if (!base) return;
+
+    // SPD EEPROMs are at SMBus addresses 0x50–0x57 (one per slot)
+    for (UINT8 slot = 0x50; slot <= 0x57; ++slot) {
+        UINT8 b0 = ReadSmbByte(base, slot, 0);
+        if (b0 == 0x00 || b0 == 0xFF) continue;       // no DIMM here
+
+        UINT8 devType = ReadSmbByte(base, slot, 2);
+
+        if (devType == 0x12) {
+            // DDR5 SPD (JEDEC SPD for DDR5, rev 1.0)
+            // Timings use 4 ps MTB; tCKAVGmin at bytes 30-31 (16-bit LE, in ps)
+            // tAAmin at bytes 40-41, tRCDmin at 42-43, tRPmin at 44-45, tRASmin at 46-47
+            sSpdDdr5 = true;
+            UINT8 tCKLo  = ReadSmbByte(base, slot, 30);
+            UINT8 tCKHi  = ReadSmbByte(base, slot, 31);
+            UINT8 tAALo  = ReadSmbByte(base, slot, 40);
+            UINT8 tAAHi  = ReadSmbByte(base, slot, 41);
+            UINT8 tRCDLo = ReadSmbByte(base, slot, 42);
+            UINT8 tRCDHi = ReadSmbByte(base, slot, 43);
+            UINT8 tRPLo  = ReadSmbByte(base, slot, 44);
+            UINT8 tRPHi  = ReadSmbByte(base, slot, 45);
+            UINT8 tRASLo5= ReadSmbByte(base, slot, 46);
+            UINT8 tRASHi5= ReadSmbByte(base, slot, 47);
+
+            UINT32 tCK  = ((UINT32)tCKHi  << 8) | tCKLo;
+            UINT32 tAA  = ((UINT32)tAAHi  << 8) | tAALo;
+            UINT32 tRCD = ((UINT32)tRCDHi << 8) | tRCDLo;
+            UINT32 tRP  = ((UINT32)tRPHi  << 8) | tRPLo;
+            UINT32 tRAS = ((UINT32)tRASHi5<< 8) | tRASLo5;
+
+            if (tCK == 0 || tCK == 0xFFFF) continue;
+
+            auto CeilDiv5 = [](UINT32 a, UINT32 b) -> UINT32 {
+                return b ? (a + b - 1) / b : 0;
+            };
+            sSpdTCL  = CeilDiv5(tAA,  tCK);
+            sSpdTRCD = CeilDiv5(tRCD, tCK);
+            sSpdTRP  = CeilDiv5(tRP,  tCK);
+            sSpdTRAS = CeilDiv5(tRAS, tCK);
+            break;
+        }
+
+        if (devType != 0x0C) continue;                 // DDR3 and below: skip
+
+        UINT8 tCKmin  = ReadSmbByte(base, slot, 18);  // min cycle time (MTB = 0.125 ns)
+        UINT8 tAAmin  = ReadSmbByte(base, slot, 24);  // CAS Latency min time
+        UINT8 tRCDmin = ReadSmbByte(base, slot, 25);  // RAS-to-CAS delay min
+        UINT8 tRPmin  = ReadSmbByte(base, slot, 26);  // Row Precharge min
+        UINT8 b27     = ReadSmbByte(base, slot, 27);  // [7:4]=tRAShi [3:0]=tRChi
+        UINT8 tRASLo  = ReadSmbByte(base, slot, 28);  // tRAS lower 8 bits
+
+        if (tCKmin == 0 || tCKmin == 0xFF) continue;
+
+        UINT32 tRAS = ((UINT32)(b27 >> 4) << 8) | tRASLo;
+
+        // Cycles = ceil(timing_MTB / tCKmin_MTB)
+        auto CeilDiv = [](UINT32 a, UINT32 b) -> UINT32 {
+            return b ? (a + b - 1) / b : 0;
+        };
+
+        sSpdTCL  = CeilDiv((UINT32)tAAmin,  (UINT32)tCKmin);
+        sSpdTRCD = CeilDiv((UINT32)tRCDmin, (UINT32)tCKmin);
+        sSpdTRP  = CeilDiv((UINT32)tRPmin,  (UINT32)tCKmin);
+        sSpdTRAS = CeilDiv(tRAS,             (UINT32)tCKmin);
+        break; // first populated DDR4 DIMM wins
+    }
+}
+
 // ── Public API ───────────────────────────────────────────────
 void Detect() {
     DetectCpuVendor();
@@ -361,6 +522,7 @@ void Detect() {
     DetectMemory();
     DetectMpServices();
     DetectSmbios();
+    DetectSpd();
 }
 
 const char* GetCpuVendor()     { return sVendor; }
@@ -376,6 +538,13 @@ UINT64      GetTotalMemoryMB()    { return sTotalMem / (1024 * 1024); }
 UINT32      GetMemorySpeedMHz()            { return sMemSpeedMHz; }
 UINT32      GetMemoryConfiguredSpeedMHz()  { return sMemConfigSpeed; }
 UINT32      GetMemoryChannelCount()        { return sMemChannelCount; }
+UINT32      GetMemoryVoltageMv()           { return sMemVoltageMv; }
+const char* GetMemoryType()               { return sMemType; }
+UINT32      GetSpdTCL()                   { return sSpdTCL; }
+UINT32      GetSpdTRCD()                  { return sSpdTRCD; }
+UINT32      GetSpdTRP()                   { return sSpdTRP; }
+UINT32      GetSpdTRAS()                  { return sSpdTRAS; }
+bool        IsSpdDdr5()                   { return sSpdDdr5; }
 
 bool HasMpServices() { return sMpAvailable; }
 EFI_MP_SERVICES_PROTOCOL* GetMpServices() { return sMpServices; }

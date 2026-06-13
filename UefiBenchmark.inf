@@ -22,6 +22,7 @@
   Source/BenchmarkRegistry.cpp
   Source/BenchmarkRunner.cpp
   Source/CoreSelection.cpp
+  Source/ScrollViewport.cpp
   Source/Tui.cpp
   Source/CpuFeatures.cpp
   Source/BigBuffer.cpp

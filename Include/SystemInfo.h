@@ -26,9 +26,19 @@ UINT64 GetTotalMemoryBytes();   // sum of EfiConventionalMemory regions
 UINT64 GetTotalMemoryMB();
 
 // Memory module info from SMBIOS (0 if SMBIOS not available)
-UINT32 GetMemorySpeedMHz();           // DIMM rated speed
-UINT32 GetMemoryConfiguredSpeedMHz(); // configured operating speed
-UINT32 GetMemoryChannelCount();       // inferred from SMBIOS bank locator strings
+UINT32      GetMemorySpeedMHz();           // DIMM rated speed
+UINT32      GetMemoryConfiguredSpeedMHz(); // configured operating speed
+UINT32      GetMemoryChannelCount();       // inferred from SMBIOS bank locator strings
+UINT32      GetMemoryVoltageMv();          // configured voltage in mV (0 if unknown)
+const char* GetMemoryType();               // e.g. "DDR4", "DDR5", "Unknown"
+
+// DRAM timings read directly from SPD via SMBus (0 if not available).
+// Populated for DDR4 and DDR5; DDR3 and older show 0.
+UINT32 GetSpdTCL();
+UINT32 GetSpdTRCD();
+UINT32 GetSpdTRP();
+UINT32 GetSpdTRAS();
+bool   IsSpdDdr5();   // true when DDR5 DIMMs detected (DDR5 timing bytes read separately)
 
 // MP Services (multi-core) support
 bool HasMpServices();

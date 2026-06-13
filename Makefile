@@ -68,6 +68,7 @@ SOURCES  = \
 	$(SRCDIR)/BenchmarkRegistry.cpp \
 	$(SRCDIR)/BenchmarkRunner.cpp \
 	$(SRCDIR)/CoreSelection.cpp \
+	$(SRCDIR)/ScrollViewport.cpp \
 	$(SRCDIR)/Tui.cpp \
 	$(SRCDIR)/CpuFeatures.cpp \
 	$(SRCDIR)/BigBuffer.cpp \

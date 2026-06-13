@@ -19,6 +19,7 @@ private:
     void ShowResults();
     void ShowCategoryResults(const char* category);
     void ShowSystemInfo();
+    void ShowAiSuitability();
     void ShowResolutionPicker();
     void ShowThemePicker();
     void ShowCorePicker();

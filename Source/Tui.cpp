@@ -3,11 +3,14 @@
 
 #include "Tui.h"
 #include "AiScore.h"
+#include "AiSuitability.h"
 #include "CoreSelection.h"
+#include "CpuFeatures.h"
 #include "Renderer.h"
 #include "BenchmarkRegistry.h"
 #include "BenchmarkRunner.h"
 #include "IBenchmark.h"
+#include "ScrollViewport.h"
 #include "Statistics.h"
 #include "Timer.h"
 #include "SystemInfo.h"
@@ -1142,108 +1145,380 @@ void Tui::ShowCorePicker() {
     }
 }
 
-// ── System Info ──────────────────────────────────────────────
+// ── System Info & AI Suitability ─────────────────────────────
+// File-scope viewports avoid function-local static init guards (not available
+// in this freestanding PE target — _Init_thread_header etc. are undefined).
+static ScrollViewport sSysInfoVp;
+static ScrollViewport sAiSuitVp;
+
+// Build a "  LABEL(padded to 24 chars)VALUE" line and append to a viewport.
+static void VpAddInfo(ScrollViewport& vp, const char* label, const char* value) {
+    char buf[ScrollViewport::MAX_WIDTH];
+    int p = 0;
+    buf[p++] = ' '; buf[p++] = ' ';
+    int llen = 0;
+    while (label[llen] && p < ScrollViewport::MAX_WIDTH - 1)
+        buf[p++] = label[llen++];
+    while (llen < 24 && p < ScrollViewport::MAX_WIDTH - 1)
+        { buf[p++] = ' '; ++llen; }
+    while (*value && p < ScrollViewport::MAX_WIDTH - 1)
+        buf[p++] = *value++;
+    buf[p] = '\0';
+    vp.AddLine(buf, Theme::Current().Accent);
+}
+
+// Word-wrap `text` into the viewport with `indent` leading spaces.
+static void VpAddWrapped(ScrollViewport& vp, const char* text, int indent, Color color) {
+    int cols = (int)Renderer::Columns() - indent - 1;
+    if (cols < 20) cols = 20;
+    char buf[ScrollViewport::MAX_WIDTH];
+    const char* p = text;
+    while (*p) {
+        const char* lineStart = p;
+        const char* brk       = nullptr;
+        int         count     = 0;
+        while (*p && count < cols) {
+            if (*p == ' ') brk = p;
+            ++p; ++count;
+        }
+        if (*p && brk && brk > lineStart)
+            p = brk + 1;   // restart after the space
+        int out = 0;
+        for (int i = 0; i < indent && out < ScrollViewport::MAX_WIDTH - 1; ++i)
+            buf[out++] = ' ';
+        for (const char* q = lineStart; q < p && out < ScrollViewport::MAX_WIDTH - 1; ++q)
+            if (*q != '\n') buf[out++] = *q;
+        buf[out] = '\0';
+        vp.AddLine(buf, color);
+        while (*p == ' ') ++p;
+    }
+}
 
 void Tui::ShowSystemInfo() {
-    Renderer::Clear();
-    int row = DrawHeader("System Information");
-    row++;
+    ScrollViewport& vp = sSysInfoVp;
+    vp.Clear();
 
-    auto DrawInfoLine = [&](const char* label, const char* value) {
-        Renderer::DrawText(2, row, Renderer::Pad(label, 22), Theme::Current().Accent);
-        Renderer::DrawText(24, row, value, Theme::Current().Text);
-        row++;
-    };
-
-    auto FormatCacheKB = [](UINT32 kb) -> const char* {
+    auto FormatCache = [](UINT32 kb) -> const char* {
         if (kb >= 1024) return Concat2(UintToStr(kb / 1024), " MB");
         return Concat2(UintToStr(kb), " KB");
     };
 
-    DrawInfoLine("CPU Vendor:",        SystemInfo::GetCpuVendor());
-    DrawInfoLine("CPU Brand:",         SystemInfo::GetCpuBrand());
-    DrawInfoLine("CPU Stepping:",      UintToStr(SystemInfo::GetCpuStepping()));
-    DrawInfoLine("Logical CPUs:",      UintToStr(SystemInfo::GetCpuCoreCount()));
-    DrawInfoLine("MP Services:",       SystemInfo::HasMpServices() ? "Available" : "Not available");
+    // ── CPU section ───────────────────────────────────────────────
+    vp.AddLine("  [CPU]", Theme::Current().TextDim);
+    VpAddInfo(vp, "Vendor:",       SystemInfo::GetCpuVendor());
+    VpAddInfo(vp, "Brand:",        SystemInfo::GetCpuBrand());
+    VpAddInfo(vp, "Stepping:",     UintToStr(SystemInfo::GetCpuStepping()));
+    VpAddInfo(vp, "Logical CPUs:", UintToStr(SystemInfo::GetCpuCoreCount()));
+    VpAddInfo(vp, "MP Services:",  SystemInfo::HasMpServices() ? "Available" : "Not available");
     if (SystemInfo::HasMpServices()) {
         UINT32 enabled = SystemInfo::GetEnabledProcessorCount();
-        char apStr[32];
-        int p = 0;
+        char apBuf[32]; int ap = 0;
         const char* ns = UintToStr(enabled > 1 ? enabled - 1 : 0);
-        for (int j = 0; ns[j]; ++j) apStr[p++] = ns[j];
-        for (const char* s = " APs + BSP"; *s; ++s) apStr[p++] = *s;
-        apStr[p] = '\0';
-        DrawInfoLine("Processors:",    apStr);
+        while (ns[ap]) { apBuf[ap] = ns[ap]; ++ap; }
+        for (const char* s = " APs + BSP"; *s; ++s) apBuf[ap++] = *s;
+        apBuf[ap] = '\0';
+        VpAddInfo(vp, "Processors:", apBuf);
     }
+
+    // ── Cache section ─────────────────────────────────────────────
+    vp.AddLine();
+    vp.AddLine("  [Cache]", Theme::Current().TextDim);
     if (SystemInfo::GetL1DataCacheKB() > 0)
-        DrawInfoLine("L1D Cache:",     FormatCacheKB(SystemInfo::GetL1DataCacheKB()));
+        VpAddInfo(vp, "L1D Cache:", FormatCache(SystemInfo::GetL1DataCacheKB()));
     if (SystemInfo::GetL1InstCacheKB() > 0)
-        DrawInfoLine("L1I Cache:",     FormatCacheKB(SystemInfo::GetL1InstCacheKB()));
+        VpAddInfo(vp, "L1I Cache:", FormatCache(SystemInfo::GetL1InstCacheKB()));
     if (SystemInfo::GetL2CacheKB() > 0)
-        DrawInfoLine("L2 Cache:",      FormatCacheKB(SystemInfo::GetL2CacheKB()));
-    DrawInfoLine("L3 Cache:",          SystemInfo::GetL3CacheKB() > 0
-                                           ? FormatCacheKB(SystemInfo::GetL3CacheKB())
-                                           : "None");
-    row++;
-    DrawInfoLine("Available Memory:",  Concat2(UintToStr(SystemInfo::GetTotalMemoryMB()), " MB"));
+        VpAddInfo(vp, "L2 Cache:",  FormatCache(SystemInfo::GetL2CacheKB()));
+    VpAddInfo(vp, "L3 Cache:", SystemInfo::GetL3CacheKB() > 0
+                                ? FormatCache(SystemInfo::GetL3CacheKB()) : "None");
+
+    // ── Memory section ────────────────────────────────────────────
+    vp.AddLine();
+    vp.AddLine("  [Memory]", Theme::Current().TextDim);
+    VpAddInfo(vp, "Available:",   Concat2(UintToStr(SystemInfo::GetTotalMemoryMB()), " MB"));
+    VpAddInfo(vp, "Type:",        SystemInfo::GetMemoryType());
     if (SystemInfo::GetMemorySpeedMHz() > 0)
-        DrawInfoLine("Memory Speed:",  Concat2(UintToStr(SystemInfo::GetMemorySpeedMHz()), " MHz"));
+        VpAddInfo(vp, "Speed:",   Concat2(UintToStr(SystemInfo::GetMemorySpeedMHz()), " MHz"));
     if (SystemInfo::GetMemoryConfiguredSpeedMHz() > 0 &&
         SystemInfo::GetMemoryConfiguredSpeedMHz() != SystemInfo::GetMemorySpeedMHz())
-        DrawInfoLine("Configured:",    Concat2(UintToStr(SystemInfo::GetMemoryConfiguredSpeedMHz()), " MHz"));
+        VpAddInfo(vp, "Configured:", Concat2(UintToStr(SystemInfo::GetMemoryConfiguredSpeedMHz()), " MHz"));
     if (SystemInfo::GetMemoryChannelCount() > 0)
-        DrawInfoLine("Mem Channels:",  UintToStr(SystemInfo::GetMemoryChannelCount()));
-    DrawInfoLine("Display:",           Concat3(UintToStr(Renderer::ScreenWidth()), "x",
-                                               UintToStr(Renderer::ScreenHeight())));
-    DrawInfoLine("Text Grid:",         Concat3(UintToStr(Renderer::Columns()), "x",
-                                               UintToStr(Renderer::Rows())));
-    DrawInfoLine("Timer Calibrated:",  Timer::IsCalibrated() ? "Yes" : "No");
-    if (Timer::IsCalibrated())
-        DrawInfoLine("Cycles/us:",     UintToStr(Timer::CyclesPerUs()));
-    DrawInfoLine("Invariant TSC:",     Timer::HasInvariantTSC() ? "Yes" : "No");
-    DrawInfoLine("Registered Tests:",  UintToStr(BenchmarkRegistry::Count()));
-
-    row++;
-    row = DrawSeparator(row);
-
-    IBenchmark** all = BenchmarkRegistry::GetAll();
-    UINTN count = BenchmarkRegistry::Count();
-    Renderer::DrawText(2, row, "Benchmarks:", Theme::Current().TextDim);
-    row++;
-
-    DurationClass lastDc = DurationClass::Long;
-    for (UINTN i = 0; i < count; ++i) {
-        DurationClass dc = all[i]->GetDurationClass();
-        if (dc != lastDc || i == 0) {
-            const char* hdr = (dc == DurationClass::Short)
-                ? "  [Short running]"
-                : "  [Long running]";
-            Renderer::DrawText(2, row, hdr, Theme::Current().TextDim);
-            row++;
-            lastDc = dc;
-        }
-
-        char line[128];
-        int p = 0;
-        line[p++] = ' '; line[p++] = ' '; line[p++] = ' '; line[p++] = '-'; line[p++] = ' ';
-        const char* n = all[i]->GetName();
-        for (int j = 0; n[j] && p < 50; ++j) line[p++] = n[j];
-        while (p < 52) line[p++] = ' ';
-        line[p++] = '[';
-        const char* c = all[i]->GetCategory();
-        for (int j = 0; c[j] && p < 65; ++j) line[p++] = c[j];
-        line[p++] = ']';
-        while (p < 70) line[p++] = ' ';
-        ThreadingMode tm = all[i]->GetThreadingMode();
-        const char* tmStr = (tm == ThreadingMode::SingleOnly) ? "Single" :
-                            (tm == ThreadingMode::MultiOnly)  ? "Multi" : "Either";
-        for (int j = 0; tmStr[j] && p < 80; ++j) line[p++] = tmStr[j];
-        line[p] = '\0';
-        Renderer::DrawText(2, row, line, Theme::Current().Text);
-        row++;
+        VpAddInfo(vp, "Channels:", UintToStr(SystemInfo::GetMemoryChannelCount()));
+    if (SystemInfo::GetMemoryVoltageMv() > 0)
+        VpAddInfo(vp, "Voltage:", Concat2(UintToStr(SystemInfo::GetMemoryVoltageMv()), " mV"));
+    else
+        VpAddInfo(vp, "Voltage:", "N/A (SMBIOS 2.8+ required)");
+    if (SystemInfo::GetSpdTCL() > 0) {
+        char tStr[32]; int tp = 0;
+        auto AppNum = [&](UINT32 n) {
+            const char* s = UintToStr((UINT64)n);
+            for (int i = 0; s[i] && tp < 31; ++i) tStr[tp++] = s[i];
+        };
+        AppNum(SystemInfo::GetSpdTCL());  tStr[tp++] = '-';
+        AppNum(SystemInfo::GetSpdTRCD()); tStr[tp++] = '-';
+        AppNum(SystemInfo::GetSpdTRP());  tStr[tp++] = '-';
+        AppNum(SystemInfo::GetSpdTRAS()); tStr[tp] = '\0';
+        VpAddInfo(vp, "Timings (SPD):", tStr);
+    } else if (SystemInfo::IsSpdDdr5()) {
+        VpAddInfo(vp, "Timings (SPD):", "DDR5 (parsed separately)");
+    } else {
+        VpAddInfo(vp, "Timings:", "N/A (DDR3/older or SMBus locked)");
     }
 
-    DrawFooter("[Any key] Back");
-    Renderer::Present();
-    Renderer::WaitKey();
+    // ── Display & system section ──────────────────────────────────
+    vp.AddLine();
+    vp.AddLine("  [Display & System]", Theme::Current().TextDim);
+    VpAddInfo(vp, "Display:",   Concat3(UintToStr(Renderer::ScreenWidth()),  "x",
+                                        UintToStr(Renderer::ScreenHeight())));
+    VpAddInfo(vp, "Text Grid:", Concat3(UintToStr(Renderer::Columns()), "x",
+                                        UintToStr(Renderer::Rows())));
+    VpAddInfo(vp, "Timer Calibrated:", Timer::IsCalibrated() ? "Yes" : "No");
+    if (Timer::IsCalibrated())
+        VpAddInfo(vp, "Cycles/us:", UintToStr(Timer::CyclesPerUs()));
+    VpAddInfo(vp, "Invariant TSC:",   Timer::HasInvariantTSC() ? "Yes" : "No");
+    VpAddInfo(vp, "Registered Tests:", UintToStr(BenchmarkRegistry::Count()));
+
+    // ── Benchmark list section ────────────────────────────────────
+    vp.AddLine();
+    vp.AddSeparator();
+    vp.AddLine("  Benchmarks:", Theme::Current().TextDim);
+
+    IBenchmark** all  = BenchmarkRegistry::GetAll();
+    UINTN        bmCount = BenchmarkRegistry::Count();
+    DurationClass lastDc = DurationClass::Long;
+    char bmLine[ScrollViewport::MAX_WIDTH];
+    for (UINTN i = 0; i < bmCount; ++i) {
+        DurationClass dc = all[i]->GetDurationClass();
+        if (dc != lastDc || i == 0) {
+            vp.AddLine(dc == DurationClass::Short
+                       ? "    [Short running]" : "    [Long running]",
+                       Theme::Current().TextDim);
+            lastDc = dc;
+        }
+        int p = 0;
+        bmLine[p++] = ' '; bmLine[p++] = ' '; bmLine[p++] = ' '; bmLine[p++] = '-'; bmLine[p++] = ' ';
+        const char* nm = all[i]->GetName();
+        for (int j = 0; nm[j] && p < 50; ++j) bmLine[p++] = nm[j];
+        while (p < 52) bmLine[p++] = ' ';
+        bmLine[p++] = '[';
+        const char* cat = all[i]->GetCategory();
+        for (int j = 0; cat[j] && p < 65; ++j) bmLine[p++] = cat[j];
+        bmLine[p++] = ']';
+        while (p < 70) bmLine[p++] = ' ';
+        ThreadingMode tm = all[i]->GetThreadingMode();
+        const char* tmStr = (tm == ThreadingMode::SingleOnly) ? "Single" :
+                            (tm == ThreadingMode::MultiOnly)  ? "Multi"  : "Either";
+        for (int j = 0; tmStr[j] && p < 80; ++j) bmLine[p++] = tmStr[j];
+        bmLine[p] = '\0';
+        vp.AddLine(bmLine, Theme::Current().Text);
+    }
+
+    // ── Render loop ───────────────────────────────────────────────
+    const int headerRows = 4; // header(3) + blank(1)
+    const int footerRows = 1;
+    const int viewRows   = (int)Renderer::Rows() - headerRows - footerRows;
+
+    Renderer::FlushInput();
+    for (;;) {
+        Renderer::Clear();
+        DrawHeader("System Information");
+        vp.Render(headerRows, viewRows);
+        DrawFooter("[Up/Dn/PgUp/PgDn] Scroll  [A] AI Suitability  [Esc] Back");
+        Renderer::Present();
+
+        EFI_INPUT_KEY key = Renderer::WaitKey();
+        if (key.ScanCode == SCAN_ESC) return;
+        if (key.UnicodeChar == 'a' || key.UnicodeChar == 'A') {
+            ShowAiSuitability();
+            continue;
+        }
+        vp.HandleKey(key, viewRows);
+    }
+}
+
+// ── AI Suitability Matrix ─────────────────────────────────────
+
+void Tui::ShowAiSuitability() {
+    ScrollViewport& vp = sAiSuitVp;
+    vp.Clear();
+
+    const auto& f    = CpuFeatures::Get();
+    AiSuitability::Tier tier = AiSuitability::Evaluate(f);
+    const char* tierName     = AiSuitability::TierName(tier);
+
+    Color tierColor;
+    switch (tier) {
+        case AiSuitability::Tier::Excellent: tierColor = Theme::Current().Accent;  break;
+        case AiSuitability::Tier::VeryGood:  tierColor = Theme::Current().Accent;  break;
+        case AiSuitability::Tier::Good:      tierColor = Theme::Current().Text;    break;
+        default:                             tierColor = Theme::Current().Warning; break;
+    }
+
+    // Tier banner
+    {
+        char buf[64]; int p = 0;
+        buf[p++] = ' '; buf[p++] = ' ';
+        for (const char* s = "Overall Tier:  "; *s; ++s) buf[p++] = *s;
+        for (const char* s = tierName; *s; ++s) buf[p++] = *s;
+        buf[p] = '\0';
+        vp.AddLine(buf, tierColor);
+    }
+
+    // Tier number indicator  e.g. "  Tier 3/4 - AVX2 + FMA"
+    {
+        char buf[80]; int p = 0;
+        buf[p++] = ' '; buf[p++] = ' ';
+        buf[p++] = 'T'; buf[p++] = 'i'; buf[p++] = 'e'; buf[p++] = 'r'; buf[p++] = ' ';
+        buf[p++] = '1' + (char)(UINT32)tier;
+        buf[p++] = '/'; buf[p++] = '4';
+        for (const char* s = "  -  "; *s; ++s) buf[p++] = *s;
+        const char* subLabel =
+            tier == AiSuitability::Tier::Excellent ? "AVX-512F + AVX-512VNNI" :
+            tier == AiSuitability::Tier::VeryGood  ? "AVX2 + FMA + AVX-VNNI"  :
+            tier == AiSuitability::Tier::Good       ? "AVX2 + FMA (baseline)"   :
+                                                     "No AVX2";
+        for (const char* s = subLabel; *s; ++s) buf[p++] = *s;
+        buf[p] = '\0';
+        vp.AddLine(buf, Theme::Current().TextDim);
+    }
+
+    // Feature checklist helper
+    auto AddFeature = [&](const char* name, const char* description, bool ok) {
+        char buf[80]; int p = 0;
+        buf[p++] = ' '; buf[p++] = ' ';
+        buf[p++] = '[';
+        if (ok) { buf[p++] = 'O'; buf[p++] = 'K'; }
+        else    { buf[p++] = '-'; buf[p++] = '-'; }
+        buf[p++] = ']'; buf[p++] = ' ';
+        for (const char* s = name; *s && p < 22; ++s) buf[p++] = *s;
+        while (p < 24) buf[p++] = ' ';
+        for (const char* s = description; *s && p < 79; ++s) buf[p++] = *s;
+        buf[p] = '\0';
+        Color c = ok ? Theme::Current().Accent : Theme::Current().TextDim;
+        vp.AddLine(buf, c);
+    };
+
+    // ── Required features ─────────────────────────────────────────
+    vp.AddLine();
+    vp.AddLine("  -- Required features --", Theme::Current().TextDim);
+    AddFeature("SSE4.2",   "Required base for quantized inference",   f.HasSSE42);
+    AddFeature("AVX",      "256-bit vector support",                  f.HasAVX);
+    AddFeature("AVX2",     "8-bit integer SIMD (MADDUBS)",            f.HasAVX2);
+    AddFeature("FMA",      "Fused multiply-add for FP32 attention",   f.HasFMA);
+    AddFeature("XSAVE",    "OS AVX state save/restore",               f.HasXSave);
+
+    // ── Accelerator features ──────────────────────────────────────
+    vp.AddLine();
+    vp.AddLine("  -- Accelerator features --", Theme::Current().TextDim);
+    AddFeature("AVX-VNNI", "INT8 dot-product (Alder Lake+, Zen4+)",   f.HasAVXVNNI);
+    AddFeature("AVX-512F", "512-bit vectors (server/Sapphire Rapids)", f.HasAVX512F);
+    AddFeature("AVX512VNNI","Native INT8/INT4 inference kernel",       f.HasAVX512VNNI);
+    AddFeature("AES-NI",   "Hardware AES acceleration",               f.HasAESNI);
+
+    // ── Architecture assessment ───────────────────────────────────
+    vp.AddLine();
+    vp.AddLine("  -- Assessment --", Theme::Current().TextDim);
+    VpAddWrapped(vp, AiSuitability::TierSummary(tier), 4, Theme::Current().Text);
+
+    // ── LLM performance estimates ─────────────────────────────────
+    vp.AddLine();
+    vp.AddLine("  -- LLM Performance Estimates --", Theme::Current().TextDim);
+
+    // Try to compute composite AI score from last results
+    UINT64 weightedSum = 0, totalWeight = 0;
+    UINTN  resultCount = mLastResults.Size();
+    for (UINTN i = 0; i < resultCount; ++i) {
+        const BenchmarkResult& r = mLastResults[i];
+        if (StrCmp(r.Category, "AI") != 0 || !r.IncludeInScore) continue;
+        weightedSum += r.Score * r.CategoryWeight;
+        totalWeight += r.CategoryWeight;
+    }
+
+    // Token-rate formatter:  score * ref_x10 / 1000  →  "N.M t/s"
+    auto FmtToks = [](char* buf, UINT64 score, UINT32 refX10) -> const char* {
+        UINT64 t = score * refX10 / 1000;
+        int p = 0;
+        const char* n = UintToStr(t / 10);
+        while (n[p]) { buf[p] = n[p]; ++p; }
+        buf[p++] = '.';
+        buf[p++] = '0' + (char)(t % 10);
+        for (const char* s = " t/s"; *s; ++s) buf[p++] = *s;
+        buf[p] = '\0';
+        return buf;
+    };
+
+    if (totalWeight > 0) {
+        UINT64 aiScore = weightedSum / totalWeight;
+        char tok7[24], tok14[24], tok32[24];
+        char infoLine[ScrollViewport::MAX_WIDTH];
+
+        auto AddEst = [&](const char* model, const char* toks) {
+            int p = 0;
+            infoLine[p++] = ' '; infoLine[p++] = ' '; infoLine[p++] = ' '; infoLine[p++] = ' ';
+            for (const char* s = model; *s && p < 26; ++s) infoLine[p++] = *s;
+            while (p < 28) infoLine[p++] = ' ';
+            for (const char* s = toks; *s && p < 79; ++s) infoLine[p++] = *s;
+            infoLine[p] = '\0';
+            vp.AddLine(infoLine, Theme::Current().Text);
+        };
+
+        FmtToks(tok7,  aiScore, AI_LLM_7B_Q4_TOKS_X10);
+        FmtToks(tok14, aiScore, AI_LLM_14B_Q4_TOKS_X10);
+        FmtToks(tok32, aiScore, AI_LLM_32B_Q4_TOKS_X10);
+
+        char scoreLine[96]; int sp = 0;
+        for (const char* s = "  AI Score: "; *s; ++s) scoreLine[sp++] = *s;
+        const char* sv = UintToStr(aiScore);
+        for (int i = 0; sv[i] && sp < 95; ++i) scoreLine[sp++] = sv[i];
+        for (const char* s = " AI pts  (Ryzen 7 5800X baseline = 1000)"; *s && sp < 95; ++s)
+            scoreLine[sp++] = *s;
+        scoreLine[sp] = '\0';
+        vp.AddLine(scoreLine, Theme::Current().Accent);
+
+        AddEst("LLM  7B Q4:",  tok7);
+        AddEst("LLM 14B Q4:",  tok14);
+        AddEst("LLM 32B Q4:",  tok32);
+        vp.AddLine("  (Estimates based on CPU-only inference; real performance varies)", Theme::Current().TextDim);
+    } else {
+        vp.AddLine("  Run the AI Benchmark Suite for personalized estimates.", Theme::Current().TextDim);
+        vp.AddLine();
+        vp.AddLine("  Reference (Ryzen 7 5800X = 1000 AI pts):", Theme::Current().TextDim);
+
+        char refLine[64];
+        auto AddRef = [&](const char* model, UINT32 refX10) {
+            char tok[24]; int p = 0;
+            UINT64 t = (UINT64)refX10;
+            refLine[p++] = ' '; refLine[p++] = ' '; refLine[p++] = ' '; refLine[p++] = ' ';
+            for (const char* s = model; *s && p < 26; ++s) refLine[p++] = *s;
+            while (p < 28) refLine[p++] = ' ';
+            (void)tok;
+            refLine[p++] = '0' + (char)(t / 10);
+            refLine[p++] = '.';
+            refLine[p++] = '0' + (char)(t % 10);
+            for (const char* s = " t/s  (reference)"; *s && p < 63; ++s) refLine[p++] = *s;
+            refLine[p] = '\0';
+            vp.AddLine(refLine, Theme::Current().TextDim);
+        };
+        AddRef("LLM  7B Q4:", AI_LLM_7B_Q4_TOKS_X10);
+        AddRef("LLM 14B Q4:", AI_LLM_14B_Q4_TOKS_X10);
+        AddRef("LLM 32B Q4:", AI_LLM_32B_Q4_TOKS_X10);
+    }
+
+    // ── Render loop ───────────────────────────────────────────────
+    const int headerRows = 4;
+    const int footerRows = 1;
+    const int viewRows   = (int)Renderer::Rows() - headerRows - footerRows;
+
+    Renderer::FlushInput();
+    for (;;) {
+        Renderer::Clear();
+        DrawHeader("AI Suitability Matrix");
+        vp.Render(headerRows, viewRows);
+        DrawFooter("[Up/Dn/PgUp/PgDn] Scroll  [Esc] Back");
+        Renderer::Present();
+
+        EFI_INPUT_KEY key = Renderer::WaitKey();
+        if (key.ScanCode == SCAN_ESC) return;
+        vp.HandleKey(key, viewRows);
+    }
 }

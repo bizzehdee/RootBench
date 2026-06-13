@@ -32,8 +32,17 @@ void Detect() {
     Cpuid(0, 0, &maxLeaf, &ebx, &ecx, &edx);
     if (maxLeaf >= 7) {
         Cpuid(7, 0, &eax, &ebx, &ecx, &edx);
-        sFeatures.HasAVX2 = (ebx >>  5) & 1;
-        sFeatures.HasSHA  = (ebx >> 29) & 1;
+        sFeatures.HasAVX2      = (ebx >>  5) & 1;
+        sFeatures.HasSHA       = (ebx >> 29) & 1;
+        sFeatures.HasAVX512F   = (ebx >> 16) & 1;
+        sFeatures.HasAVX512VNNI= (ecx >> 11) & 1;
+
+        // Subleaf 1: AVX-VNNI (EAX[4])
+        UINT32 maxSub0 = eax;
+        if (maxSub0 >= 1) {
+            Cpuid(7, 1, &eax, &ebx, &ecx, &edx);
+            sFeatures.HasAVXVNNI = (eax >> 4) & 1;
+        }
     }
 
     // SSE4.2 is leaf 1 ECX bit 20

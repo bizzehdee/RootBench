@@ -16,6 +16,9 @@ struct Features {
     bool HasAESNI;
     bool HasSHA;
     bool HasXSave;
+    bool HasAVX512F;    // AVX-512 Foundation (leaf 7 sl0 EBX[16])
+    bool HasAVX512VNNI; // AVX-512 Vector Neural Network (leaf 7 sl0 ECX[11])
+    bool HasAVXVNNI;    // AVX-VNNI (leaf 7 sl1 EAX[4])
 };
 
 // Detect features via CPUID. Safe to call before EnableAvxState().

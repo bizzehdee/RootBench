@@ -20,6 +20,7 @@ private:
     void ShowSystemInfo();
     void ShowResolutionPicker();
     void ShowThemePicker();
+    void ShowCorePicker();
 
     // UI helpers
     int  DrawHeader(const char* title, int startRow = 0);

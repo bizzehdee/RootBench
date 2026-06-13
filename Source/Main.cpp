@@ -4,6 +4,7 @@
 #include "Freestanding.h"
 #include "Timer.h"
 #include "SystemInfo.h"
+#include "CoreSelection.h"
 #include "Renderer.h"
 #include "BenchmarkRegistry.h"
 #include "CpuFeatures.h"
@@ -87,6 +88,7 @@ extern "C" EFI_STATUS EFIAPI EfiMain(
     // ── 5. Detect system info + CPU features ─────────────────
     SystemInfo::Detect();
     CpuFeatures::Detect();
+    CoreSelection::Init();
 
     if (gopOk) {
         Renderer::DrawText(2, 8, "Detecting system resources...", Theme::Current().TextDim);

@@ -2,6 +2,7 @@
 
 #include "BenchmarkRunner.h"
 #include "BenchmarkRegistry.h"
+#include "CoreSelection.h"
 #include "Timer.h"
 #include "Statistics.h"
 #include "Renderer.h"
@@ -187,8 +188,12 @@ BenchmarkResult BenchmarkRunner::RunSingle(IBenchmark* benchmark, UINTN runs,
     UINT32 apCount = 0;
 
     if (multiCore && mp) {
-        UINT32 enabled = SystemInfo::GetEnabledProcessorCount();
-        apCount = (enabled > 1) ? enabled - 1 : 0;
+        if (CoreSelection::Count() > 0) {
+            apCount = CoreSelection::SelectedCount();
+        } else {
+            UINT32 enabled = SystemInfo::GetEnabledProcessorCount();
+            apCount = (enabled > 1) ? enabled - 1 : 0;
+        }
     }
 
     if (multiCore && apCount == 0) {
@@ -206,6 +211,21 @@ BenchmarkResult BenchmarkRunner::RunSingle(IBenchmark* benchmark, UINTN runs,
         pCtx.MultiCore = multiCore && result.CoreCount > 1;
         pCtx.CoreCount = result.CoreCount;
         benchmark->SetProgressCallback(DrawLiveProgress, &pCtx);
+    }
+
+    // Build list of APs to temporarily disable (unselected but available APs)
+    UINTN disabledAPs[CoreSelection::MAX_APS];
+    UINT32 disabledCount = 0;
+
+    if (multiCore && mp && CoreSelection::Count() > 0) {
+        CoreSelection::ApInfo* roster = CoreSelection::GetAll();
+        UINT32 total = CoreSelection::Count();
+        for (UINT32 i = 0; i < total; ++i) {
+            if (roster[i].Available && !roster[i].Selected) {
+                EFI_STATUS es = mp->EnableDisableAP(mp, roster[i].ProcIndex, FALSE, nullptr);
+                if (!EFI_ERROR(es)) disabledAPs[disabledCount++] = roster[i].ProcIndex;
+            }
+        }
     }
 
     benchmark->Setup();
@@ -242,6 +262,12 @@ BenchmarkResult BenchmarkRunner::RunSingle(IBenchmark* benchmark, UINTN runs,
     }
 
     benchmark->Teardown();
+
+    // Re-enable any APs we parked for this run
+    if (mp) {
+        for (UINT32 i = 0; i < disabledCount; ++i)
+            mp->EnableDisableAP(mp, disabledAPs[i], TRUE, nullptr);
+    }
 
     if (isLong) {
         benchmark->SetProgressCallback(nullptr, nullptr);

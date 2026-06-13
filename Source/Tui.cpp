@@ -2,6 +2,7 @@
 // progress display, results table, and system info screen.
 
 #include "Tui.h"
+#include "CoreSelection.h"
 #include "Renderer.h"
 #include "BenchmarkRegistry.h"
 #include "BenchmarkRunner.h"
@@ -136,9 +137,10 @@ void Tui::ShowMainMenu() {
         "System Info",
         "Change Resolution",
         "Change Theme",
+        "Select Cores",
         "Shutdown"
     };
-    constexpr int OPT_COUNT = 8;
+    constexpr int OPT_COUNT = 9;
     int cursor = 0;
 
     while (true) {
@@ -195,7 +197,8 @@ void Tui::ShowMainMenu() {
                 case 4: ShowSystemInfo();         break;
                 case 5: ShowResolutionPicker();   break;
                 case 6: ShowThemePicker();        break;
-                case 7: return;
+                case 7: ShowCorePicker();         break;
+                case 8: return;
             }
         }
     }
@@ -642,6 +645,97 @@ void Tui::ShowResolutionPicker() {
             }
             return;
         }
+    }
+}
+
+// ── Core Picker ───────────────────────────────────────────────
+
+void Tui::ShowCorePicker() {
+    if (!SystemInfo::HasMpServices() || CoreSelection::Count() == 0) {
+        Renderer::Clear();
+        DrawHeader("Select Cores");
+        Renderer::DrawText(2, 5, "MP Services not available; single-core only.", Theme::Current().Warning);
+        DrawFooter("[Any key] Back");
+        Renderer::Present();
+        Renderer::WaitKey();
+        return;
+    }
+
+    UINT32 apCount = CoreSelection::Count();
+    CoreSelection::ApInfo* roster = CoreSelection::GetAll();
+    int cursor = 0;
+
+    while (true) {
+        Renderer::Clear();
+        int row = DrawHeader("Select Cores");
+        row++;
+
+        // Count selected for header info
+        UINT32 selCount = CoreSelection::SelectedCount();
+        {
+            char info[80];
+            int p = 0;
+            const char* ns = UintToStr(selCount);
+            for (int j = 0; ns[j]; ++j) info[p++] = ns[j];
+            for (const char* s = " of "; *s; ++s) info[p++] = *s;
+            ns = UintToStr(apCount);
+            for (int j = 0; ns[j]; ++j) info[p++] = ns[j];
+            for (const char* s = " APs selected (BSP always runs on core 0)"; *s; ++s) info[p++] = *s;
+            info[p] = '\0';
+            Renderer::DrawText(2, row, info, Theme::Current().TextDim);
+        }
+        row += 2;
+
+        int menuStart = row;
+        int viewRows = static_cast<int>(Renderer::Rows()) - row - 6;
+        int scrollOff = 0;
+        if (cursor >= viewRows) scrollOff = cursor - viewRows + 1;
+
+        for (int i = 0; i < viewRows && (scrollOff + i) < static_cast<int>(apCount); ++i) {
+            auto& ap = roster[scrollOff + i];
+            char label[80];
+            int p = 0;
+            for (const char* s = "AP "; *s; ++s) label[p++] = *s;
+            const char* ns = UintToStr(ap.ProcIndex);
+            for (int j = 0; ns[j] && p < 10; ++j) label[p++] = ns[j];
+            while (p < 6) label[p++] = ' ';
+            for (const char* s = "  Pkg:"; *s; ++s) label[p++] = *s;
+            ns = UintToStr(ap.Package);
+            for (int j = 0; ns[j] && p < 70; ++j) label[p++] = ns[j];
+            for (const char* s = "  Core:"; *s; ++s) label[p++] = *s;
+            ns = UintToStr(ap.Core);
+            for (int j = 0; ns[j] && p < 70; ++j) label[p++] = ns[j];
+            for (const char* s = "  Thr:"; *s; ++s) label[p++] = *s;
+            ns = UintToStr(ap.Thread);
+            for (int j = 0; ns[j] && p < 70; ++j) label[p++] = ns[j];
+            if (!ap.Available) {
+                for (const char* s = "  [disabled by firmware]"; *s && p < 78; ++s) label[p++] = *s;
+            }
+            label[p] = '\0';
+            DrawMenuItem(menuStart + i, label,
+                         (scrollOff + i) == cursor,
+                         true, ap.Selected);
+        }
+
+        DrawFooter("[Up/Down] Move  [Space] Toggle  [A]ll  [P]hysical  [1]PerPkg  [Esc] Done");
+        Renderer::Present();
+
+        EFI_INPUT_KEY key = Renderer::WaitKey();
+        if (key.ScanCode == SCAN_UP && cursor > 0)
+            --cursor;
+        else if (key.ScanCode == SCAN_DOWN &&
+                 cursor < static_cast<int>(apCount) - 1)
+            ++cursor;
+        else if (key.UnicodeChar == ' ' && roster[cursor].Available)
+            roster[cursor].Selected = !roster[cursor].Selected;
+        else if (key.UnicodeChar == 'a' || key.UnicodeChar == 'A')
+            CoreSelection::SelectAll();
+        else if (key.UnicodeChar == 'p' || key.UnicodeChar == 'P')
+            CoreSelection::SelectPhysicalCoresOnly();
+        else if (key.UnicodeChar == '1')
+            CoreSelection::SelectOnePerPackage();
+        else if (key.ScanCode == SCAN_ESC)
+            return;
     }
 }
 

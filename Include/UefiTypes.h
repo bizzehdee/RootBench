@@ -426,12 +426,35 @@ typedef struct {
 // ── MP Services Protocol (PI Spec — multi-core dispatch) ─────
 typedef VOID (EFIAPI *EFI_AP_PROCEDURE)(IN VOID *Buffer);
 
+// Processor location from GetProcessorInfo
+typedef struct {
+    UINT32 Package;
+    UINT32 Core;
+    UINT32 Thread;
+} EFI_CPU_PHYSICAL_LOCATION;
+
+typedef struct {
+    UINT64                  ProcessorId;  // APIC ID
+    UINT32                  StatusFlag;   // bit0=BSP, bit1=enabled, bit2=healthy
+    EFI_CPU_PHYSICAL_LOCATION Location;
+} EFI_PROCESSOR_INFORMATION;
+
+#define PROCESSOR_AS_BSP_BIT        0x00000001u
+#define PROCESSOR_ENABLED_BIT       0x00000002u
+#define PROCESSOR_HEALTH_STATUS_BIT 0x00000004u
+
 struct EFI_MP_SERVICES_PROTOCOL;
 
 typedef EFI_STATUS (EFIAPI *EFI_MP_SERVICES_GET_NUMBER_OF_PROCESSORS)(
     IN  struct EFI_MP_SERVICES_PROTOCOL *This,
     OUT UINTN *NumberOfProcessors,
     OUT UINTN *NumberOfEnabledProcessors
+);
+
+typedef EFI_STATUS (EFIAPI *EFI_MP_SERVICES_GET_PROCESSOR_INFO)(
+    IN  struct EFI_MP_SERVICES_PROTOCOL *This,
+    IN  UINTN ProcessorNumber,
+    OUT EFI_PROCESSOR_INFORMATION *ProcessorInfoBuffer
 );
 
 typedef EFI_STATUS (EFIAPI *EFI_MP_SERVICES_STARTUP_ALL_APS)(
@@ -450,7 +473,15 @@ typedef EFI_STATUS (EFIAPI *EFI_MP_SERVICES_STARTUP_THIS_AP)(
     IN  UINTN ProcessorNumber,
     IN  EFI_EVENT WaitEvent OPTIONAL,
     IN  UINTN TimeoutInMicroseconds,
-    IN  VOID *ProcedureArgument OPTIONAL
+    IN  VOID *ProcedureArgument OPTIONAL,
+    OUT BOOLEAN *Finished OPTIONAL
+);
+
+typedef EFI_STATUS (EFIAPI *EFI_MP_SERVICES_ENABLE_DISABLE_AP)(
+    IN  struct EFI_MP_SERVICES_PROTOCOL *This,
+    IN  UINTN ProcessorNumber,
+    IN  BOOLEAN EnableAP,
+    IN  UINT32 *HealthFlag OPTIONAL
 );
 
 typedef EFI_STATUS (EFIAPI *EFI_MP_SERVICES_WHO_AM_I)(
@@ -460,11 +491,11 @@ typedef EFI_STATUS (EFIAPI *EFI_MP_SERVICES_WHO_AM_I)(
 
 struct EFI_MP_SERVICES_PROTOCOL {
     EFI_MP_SERVICES_GET_NUMBER_OF_PROCESSORS GetNumberOfProcessors;
-    VOID*                                     GetProcessorInfo;
+    EFI_MP_SERVICES_GET_PROCESSOR_INFO       GetProcessorInfo;
     EFI_MP_SERVICES_STARTUP_ALL_APS          StartupAllAPs;
     EFI_MP_SERVICES_STARTUP_THIS_AP          StartupThisAP;
     VOID*                                     SwitchBSP;
-    VOID*                                     EnableDisableAP;
+    EFI_MP_SERVICES_ENABLE_DISABLE_AP        EnableDisableAP;
     EFI_MP_SERVICES_WHO_AM_I                 WhoAmI;
 };
 

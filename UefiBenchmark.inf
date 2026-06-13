@@ -21,6 +21,7 @@
   Source/Renderer.cpp
   Source/BenchmarkRegistry.cpp
   Source/BenchmarkRunner.cpp
+  Source/CoreSelection.cpp
   Source/Tui.cpp
   Source/CpuFeatures.cpp
   Source/BigBuffer.cpp

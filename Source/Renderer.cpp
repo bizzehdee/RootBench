@@ -246,7 +246,7 @@ bool SetModeByIndex(UINT32 modeIndex) {
 
 // ── Clear ────────────────────────────────────────────────────
 void Clear() {
-    Clear(Theme::Background);
+    Clear(Theme::Current().Background);
 }
 
 void Clear(Color color) {

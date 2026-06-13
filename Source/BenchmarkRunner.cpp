@@ -54,9 +54,9 @@ static void DrawLiveProgress(const ProgressReport& r, void* vctx) {
     const int rows = static_cast<int>(Renderer::Rows());
 
     // Header
-    Renderer::FillRow(0, Theme::HeaderBorder);
-    Renderer::DrawText(2, 0, "BENCHMARK IN PROGRESS", Theme::HeaderText);
-    Renderer::FillRow(1, Theme::Separator);
+    Renderer::FillRow(0, Theme::Current().HeaderBorder);
+    Renderer::DrawText(2, 0, "BENCHMARK IN PROGRESS", Theme::Current().HeaderText);
+    Renderer::FillRow(1, Theme::Current().Separator);
 
     // Benchmark name (left) + mode (right) on row 3
     {
@@ -65,7 +65,7 @@ static void DrawLiveProgress(const ProgressReport& r, void* vctx) {
         nb[p++] = ' '; nb[p++] = ' ';
         p = ProgAppend(nb, p, pc->Name);
         nb[p] = '\0';
-        Renderer::DrawText(0, 3, nb, Theme::Accent);
+        Renderer::DrawText(0, 3, nb, Theme::Current().Accent);
 
         static char mb[48];
         p = 0;
@@ -77,7 +77,7 @@ static void DrawLiveProgress(const ProgressReport& r, void* vctx) {
             p = ProgAppend(mb, p, "Single-core (BSP)");
         }
         mb[p] = '\0';
-        Renderer::DrawText(cols - p - 2, 3, mb, Theme::TextDim);
+        Renderer::DrawText(cols - p - 2, 3, mb, Theme::Current().TextDim);
     }
 
     // Progress bar + elapsed/budget on row 5
@@ -106,7 +106,7 @@ static void DrawLiveProgress(const ProgressReport& r, void* vctx) {
         }
         bar[p++] = '%';
         bar[p] = '\0';
-        Renderer::DrawText(0, 5, bar, Theme::CheckMark);
+        Renderer::DrawText(0, 5, bar, Theme::Current().CheckMark);
 
         static char tb[32];
         char el[12], bd[12];
@@ -116,7 +116,7 @@ static void DrawLiveProgress(const ProgressReport& r, void* vctx) {
         p = ProgAppend(tb, p, " / ");
         p = ProgAppend(tb, p, bd);
         tb[p] = '\0';
-        Renderer::DrawText(cols - p - 2, 5, tb, Theme::TextDim);
+        Renderer::DrawText(cols - p - 2, 5, tb, Theme::Current().TextDim);
     }
 
     // Score on row 7
@@ -134,17 +134,17 @@ static void DrawLiveProgress(const ProgressReport& r, void* vctx) {
             p = ProgAppend(sb, p, r.Unit);
         }
         sb[p] = '\0';
-        Renderer::DrawText(0, 7, sb, Theme::Text);
+        Renderer::DrawText(0, 7, sb, Theme::Current().Text);
     }
 
     // Reassurance
-    Renderer::DrawText(2, 9, "System is working normally.  Please wait...", Theme::TextDim);
+    Renderer::DrawText(2, 9, "System is working normally.  Please wait...", Theme::Current().TextDim);
 
     // Footer (matches Tui::DrawFooter layout)
-    Renderer::FillRow(rows - 3, Theme::Separator);
+    Renderer::FillRow(rows - 3, Theme::Current().Separator);
     const char* copy = "(c) 2026 Darren Horrocks | https://github.com/bizzehdee/UefiBenchmark | MIT License";
-    Renderer::DrawTextBg(0, rows - 2, Renderer::Pad(copy, cols), Theme::Footer, Theme::Background);
-    Renderer::DrawTextBg(0, rows - 1, Renderer::Pad("", cols), Theme::TextDim, Theme::Background);
+    Renderer::DrawTextBg(0, rows - 2, Renderer::Pad(copy, cols), Theme::Current().Footer, Theme::Current().Background);
+    Renderer::DrawTextBg(0, rows - 1, Renderer::Pad("", cols), Theme::Current().TextDim, Theme::Current().Background);
 
     Renderer::Present();
 }
@@ -154,8 +154,8 @@ static void DrawLiveProgress(const ProgressReport& r, void* vctx) {
 static void DrawProgress(const char* title, const char* name,
                          UINTN current, UINTN total, bool multiCore) {
     Renderer::Clear();
-    Renderer::DrawText(2, 1, title, Theme::Accent);
-    Renderer::DrawText(2, 3, "Progress:", Theme::Text);
+    Renderer::DrawText(2, 1, title, Theme::Current().Accent);
+    Renderer::DrawText(2, 3, "Progress:", Theme::Current().Text);
 
     char buf[64];
     const char* cs = UintToStr(current);
@@ -166,10 +166,10 @@ static void DrawProgress(const char* title, const char* name,
     for (int i = 0; ts[i]; ++i) buf[p++] = ts[i];
     buf[p] = '\0';
 
-    Renderer::DrawText(12, 3, buf, Theme::Accent);
-    Renderer::DrawText(2, 5, "Current:", Theme::Text);
-    Renderer::DrawText(12, 5, name, Theme::Warning);
-    Renderer::DrawText(2, 7, multiCore ? "Running (multi-core)..." : "Running...", Theme::TextDim);
+    Renderer::DrawText(12, 3, buf, Theme::Current().Accent);
+    Renderer::DrawText(2, 5, "Current:", Theme::Current().Text);
+    Renderer::DrawText(12, 5, name, Theme::Current().Warning);
+    Renderer::DrawText(2, 7, multiCore ? "Running (multi-core)..." : "Running...", Theme::Current().TextDim);
     Renderer::Present();
 }
 

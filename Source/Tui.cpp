@@ -40,7 +40,7 @@ int Tui::DrawHeader(const char* title, int startRow) {
     for (int i = 0; i < bLen; ++i) border[i] = '=';
     border[bLen] = '\0';
 
-    Renderer::DrawText(0, startRow, border, Theme::HeaderBorder);
+    Renderer::DrawText(0, startRow, border, Theme::Current().HeaderBorder);
 
     int pad = (cols - static_cast<int>(StrLen(title))) / 2;
     char line[128];
@@ -49,9 +49,9 @@ int Tui::DrawHeader(const char* title, int startRow) {
     for (int i = 0; title[i] && p < 126; ++i) line[p++] = title[i];
     while (p < bLen) line[p++] = ' ';
     line[p] = '\0';
-    Renderer::DrawText(0, startRow + 1, line, Theme::HeaderText);
+    Renderer::DrawText(0, startRow + 1, line, Theme::Current().HeaderText);
 
-    Renderer::DrawText(0, startRow + 2, border, Theme::HeaderBorder);
+    Renderer::DrawText(0, startRow + 2, border, Theme::Current().HeaderBorder);
     return startRow + 3;
 }
 
@@ -61,7 +61,7 @@ int Tui::DrawSeparator(int row) {
     int len = cols < 127 ? cols : 127;
     for (int i = 0; i < len; ++i) sep[i] = '-';
     sep[len] = '\0';
-    Renderer::DrawText(0, row, sep, Theme::Separator);
+    Renderer::DrawText(0, row, sep, Theme::Current().Separator);
     return row + 1;
 }
 
@@ -88,9 +88,9 @@ void Tui::DrawMenuItem(int row, const char* text, bool highlighted,
     line[p] = '\0';
 
     if (highlighted)
-        Renderer::DrawTextBg(0, row, line, Theme::HighlightTxt, Theme::Highlight);
+        Renderer::DrawTextBg(0, row, line, Theme::Current().HighlightTxt, Theme::Current().Highlight);
     else
-        Renderer::DrawTextBg(0, row, line, Theme::Text, Theme::Background);
+        Renderer::DrawTextBg(0, row, line, Theme::Current().Text, Theme::Current().Background);
 }
 
 void Tui::DrawFooter(const char* text) {
@@ -99,9 +99,9 @@ void Tui::DrawFooter(const char* text) {
     DrawSeparator(rows - 3);
     Renderer::DrawTextBg(0, rows - 2,
         Renderer::Pad("(c) 2026 Darren Horrocks | https://github.com/bizzehdee/UefiBenchmark | MIT License", cols),
-        Theme::TextDim, Theme::Background);
+        Theme::Current().TextDim, Theme::Current().Background);
     Renderer::DrawTextBg(0, rows - 1, Renderer::Pad(text, cols),
-                         Theme::Footer, Theme::Background);
+                         Theme::Current().Footer, Theme::Current().Background);
 }
 
 void Tui::DrawProgressBar(int row, UINTN current, UINTN total) {
@@ -116,7 +116,7 @@ void Tui::DrawProgressBar(int row, UINTN current, UINTN total) {
     bar[barWidth + 1] = ']';
     bar[barWidth + 2] = '\0';
 
-    Renderer::DrawText(2, row, bar, Theme::Accent);
+    Renderer::DrawText(2, row, bar, Theme::Current().Accent);
 }
 
 // ── Main entry ───────────────────────────────────────────────
@@ -135,16 +135,17 @@ void Tui::ShowMainMenu() {
         "View Last Results",
         "System Info",
         "Change Resolution",
+        "Change Theme",
         "Shutdown"
     };
-    constexpr int OPT_COUNT = 7;
+    constexpr int OPT_COUNT = 8;
     int cursor = 0;
 
     while (true) {
         Renderer::Clear();
         int row = DrawHeader("UEFI BENCHMARK SUITE");
         row++;
-        Renderer::DrawText(2, row, "C++ Freestanding UEFI Benchmark Tool", Theme::TextDim);
+        Renderer::DrawText(2, row, "C++ Freestanding UEFI Benchmark Tool", Theme::Current().TextDim);
         row += 2;
 
         int menuStart = row;
@@ -193,7 +194,8 @@ void Tui::ShowMainMenu() {
                 case 3: ShowResults();            break;
                 case 4: ShowSystemInfo();         break;
                 case 5: ShowResolutionPicker();   break;
-                case 6: return;
+                case 6: ShowThemePicker();        break;
+                case 7: return;
             }
         }
     }
@@ -206,7 +208,7 @@ void Tui::ShowBenchmarkSelection() {
     if (bmCount == 0) {
         Renderer::Clear();
         DrawHeader("Select Benchmarks");
-        Renderer::DrawText(2, 5, "No benchmarks registered.", Theme::Error);
+        Renderer::DrawText(2, 5, "No benchmarks registered.", Theme::Current().Error);
         DrawFooter("[Any key] Back");
         Renderer::Present();
         Renderer::WaitKey();
@@ -243,9 +245,9 @@ void Tui::ShowBenchmarkSelection() {
             for (int j = 0; ns[j]; ++j) hint[p++] = ns[j];
             for (const char* s = " APs available)"; *s; ++s) hint[p++] = *s;
             hint[p] = '\0';
-            Renderer::DrawText(2, row, hint, Theme::TextDim);
+            Renderer::DrawText(2, row, hint, Theme::Current().TextDim);
         } else {
-            Renderer::DrawText(2, row, "Space:Toggle  (single-core only — no MP Services)", Theme::TextDim);
+            Renderer::DrawText(2, row, "Space:Toggle  (single-core only — no MP Services)", Theme::Current().TextDim);
         }
         row += 2;
 
@@ -261,7 +263,7 @@ void Tui::ShowBenchmarkSelection() {
                 const char* hdr = (dc == DurationClass::Short)
                     ? "  -- Short running --"
                     : "  -- Long running --";
-                Renderer::DrawText(0, vRow, hdr, Theme::TextDim);
+                Renderer::DrawText(0, vRow, hdr, Theme::Current().TextDim);
                 ++vRow;
                 lastDc = dc;
             }
@@ -300,7 +302,7 @@ void Tui::ShowBenchmarkSelection() {
         // Description of current item
         int descRow = vRow + 1;
         DrawSeparator(descRow - 1);
-        Renderer::DrawText(2, descRow, all[cursor]->GetDescription(), Theme::TextDim);
+        Renderer::DrawText(2, descRow, all[cursor]->GetDescription(), Theme::Current().TextDim);
 
         DrawFooter("[Up/Dn] Move [Space] Toggle [L/R] Mode [Enter] Run [Esc] Back");
         Renderer::Present();
@@ -347,14 +349,14 @@ void Tui::ShowRunCountPicker(const UINTN* indices, const bool* multiCore,
         Renderer::Clear();
         int row = DrawHeader("Set Run Count");
         row++;
-        Renderer::DrawText(2, row, "How many times to run each benchmark?", Theme::TextDim);
+        Renderer::DrawText(2, row, "How many times to run each benchmark?", Theme::Current().TextDim);
         row += 2;
 
-        Renderer::DrawText(2, row, "Runs: ", Theme::Text);
-        Renderer::DrawText(8, row, UintToStr(static_cast<UINT64>(runs)), Theme::Accent);
+        Renderer::DrawText(2, row, "Runs: ", Theme::Current().Text);
+        Renderer::DrawText(8, row, UintToStr(static_cast<UINT64>(runs)), Theme::Current().Accent);
         row += 2;
 
-        Renderer::DrawText(2, row, "[Left/Right] Adjust  [Enter] Start  [Esc] Cancel", Theme::TextDim);
+        Renderer::DrawText(2, row, "[Left/Right] Adjust  [Enter] Start  [Esc] Cancel", Theme::Current().TextDim);
 
         DrawFooter(Concat3("Running ", UintToStr(count), " benchmark(s)"));
         Renderer::Present();
@@ -384,7 +386,7 @@ void Tui::ShowResults() {
     if (mLastResults.Empty()) {
         Renderer::Clear();
         DrawHeader("Benchmark Results");
-        Renderer::DrawText(2, 5, "No results available. Run benchmarks first.", Theme::Warning);
+        Renderer::DrawText(2, 5, "No results available. Run benchmarks first.", Theme::Current().Warning);
         DrawFooter("[Any key] Back");
         Renderer::Present();
         Renderer::WaitKey();
@@ -400,14 +402,14 @@ void Tui::ShowResults() {
         row++;
 
         // Column headers — grid is 100 cols
-        Renderer::DrawText(2,  row, Renderer::Pad("Benchmark", 22),   Theme::Accent);
-        Renderer::DrawText(24, row, Renderer::Pad("Cat", 6),           Theme::Accent);
-        Renderer::DrawText(30, row, Renderer::Pad("Cores", 7),         Theme::Accent);
-        Renderer::DrawText(37, row, Renderer::Pad("Avg(us)", 12),      Theme::Accent);
-        Renderer::DrawText(49, row, Renderer::Pad("Min(us)", 12),      Theme::Accent);
-        Renderer::DrawText(61, row, Renderer::Pad("Max(us)", 12),      Theme::Accent);
-        Renderer::DrawText(73, row, Renderer::Pad("Score", 11),        Theme::Accent);
-        Renderer::DrawText(84, row, Renderer::Pad("Unit", 9),          Theme::Accent);
+        Renderer::DrawText(2,  row, Renderer::Pad("Benchmark", 22),   Theme::Current().Accent);
+        Renderer::DrawText(24, row, Renderer::Pad("Cat", 6),           Theme::Current().Accent);
+        Renderer::DrawText(30, row, Renderer::Pad("Cores", 7),         Theme::Current().Accent);
+        Renderer::DrawText(37, row, Renderer::Pad("Avg(us)", 12),      Theme::Current().Accent);
+        Renderer::DrawText(49, row, Renderer::Pad("Min(us)", 12),      Theme::Current().Accent);
+        Renderer::DrawText(61, row, Renderer::Pad("Max(us)", 12),      Theme::Current().Accent);
+        Renderer::DrawText(73, row, Renderer::Pad("Score", 11),        Theme::Current().Accent);
+        Renderer::DrawText(84, row, Renderer::Pad("Unit", 9),          Theme::Current().Accent);
         row++;
         row = DrawSeparator(row);
 
@@ -415,8 +417,8 @@ void Tui::ShowResults() {
         for (int i = 0; i < viewRows && (scroll + i) < resultCount; ++i) {
             auto& r = mLastResults[static_cast<UINTN>(scroll + i)];
 
-            Renderer::DrawText(2,  row, Renderer::Pad(r.Name, 22),     Theme::Text);
-            Renderer::DrawText(24, row, Renderer::Pad(r.Category, 6),  Theme::Accent);
+            Renderer::DrawText(2,  row, Renderer::Pad(r.Name, 22),     Theme::Current().Text);
+            Renderer::DrawText(24, row, Renderer::Pad(r.Category, 6),  Theme::Current().Accent);
 
             char coreStr[16];
             if (r.MultiCore) {
@@ -428,26 +430,26 @@ void Tui::ShowResults() {
                 coreStr[0] = '1'; coreStr[1] = '\0';
             }
             Renderer::DrawText(30, row, Renderer::Pad(coreStr, 7),
-                               r.MultiCore ? Theme::Warning : Theme::TextDim);
+                               r.MultiCore ? Theme::Current().Warning : Theme::Current().TextDim);
 
             UINT64 avg = Stats::GetAverage(r.RunTimesUs);
             UINT64 mn  = Stats::GetMin(r.RunTimesUs);
             UINT64 mx  = Stats::GetMax(r.RunTimesUs);
 
-            Renderer::DrawText(37, row, Renderer::Pad(UintToStr(avg), 12), Theme::Success);
-            Renderer::DrawText(49, row, Renderer::Pad(UintToStr(mn),  12), Theme::TextDim);
-            Renderer::DrawText(61, row, Renderer::Pad(UintToStr(mx),  12), Theme::TextDim);
+            Renderer::DrawText(37, row, Renderer::Pad(UintToStr(avg), 12), Theme::Current().Success);
+            Renderer::DrawText(49, row, Renderer::Pad(UintToStr(mn),  12), Theme::Current().TextDim);
+            Renderer::DrawText(61, row, Renderer::Pad(UintToStr(mx),  12), Theme::Current().TextDim);
 
             if (r.Score > 0) {
-                Renderer::DrawText(73, row, Renderer::Pad(UintToStr(r.Score), 11), Theme::Accent);
-                Renderer::DrawText(84, row, Renderer::Pad(r.Unit,             9),  Theme::TextDim);
+                Renderer::DrawText(73, row, Renderer::Pad(UintToStr(r.Score), 11), Theme::Current().Accent);
+                Renderer::DrawText(84, row, Renderer::Pad(r.Unit,             9),  Theme::Current().TextDim);
             } else {
-                Renderer::DrawText(73, row, Renderer::Pad("---", 11), Theme::TextDim);
+                Renderer::DrawText(73, row, Renderer::Pad("---", 11), Theme::Current().TextDim);
             }
 
             // Error count indicator for integrity test
             if (r.ErrorCount > 0) {
-                Renderer::DrawText(93, row, "ERR", Theme::Error);
+                Renderer::DrawText(93, row, "ERR", Theme::Current().Error);
             }
 
             row++;
@@ -461,7 +463,7 @@ void Tui::ShowResults() {
 
         Renderer::DrawText(2, row,
             Concat3("Total suite time: ", UintToStr(totalTime / 1000), " ms"),
-            Theme::Text);
+            Theme::Current().Text);
         row++;
 
         // Integrity error summary
@@ -471,19 +473,19 @@ void Tui::ShowResults() {
         if (totalErrors > 0) {
             Renderer::DrawText(2, row,
                 Concat3("!! RAM ERRORS DETECTED: ", UintToStr(totalErrors), " mismatches !!"),
-                Theme::Error);
+                Theme::Current().Error);
             row++;
         }
 
         if (Timer::IsCalibrated()) {
             Renderer::DrawText(2, row,
                 Concat3("TSC: ", UintToStr(Timer::CyclesPerUs()), " cycles/us"),
-                Theme::TextDim);
+                Theme::Current().TextDim);
             if (!Timer::HasInvariantTSC()) {
                 row++;
                 Renderer::DrawText(2, row,
                     "Warning: Invariant TSC not detected; timing may be imprecise",
-                    Theme::Warning);
+                    Theme::Current().Warning);
             }
         }
 
@@ -497,6 +499,65 @@ void Tui::ShowResults() {
     }
 }
 
+// ── Theme Picker ─────────────────────────────────────────────
+
+void Tui::ShowThemePicker() {
+    struct ThemeEntry { ThemeId id; const char* name; };
+    constexpr ThemeEntry kThemes[] = {
+        { ThemeId::Dark,            "Dark (default)"     },
+        { ThemeId::Light,           "Light"              },
+        { ThemeId::HighContrastDark,"High-contrast dark" },
+    };
+    constexpr int kCount = 3;
+
+    // Start cursor on the currently active theme
+    int cursor = 0;
+    for (int i = 0; i < kCount; ++i) {
+        if (kThemes[i].id == Theme::CurrentId()) { cursor = i; break; }
+    }
+
+    while (true) {
+        Renderer::Clear();
+        int row = DrawHeader("Change Theme");
+        row++;
+        Renderer::DrawText(2, row, "Select a colour theme:", Theme::Current().TextDim);
+        row += 2;
+
+        int menuStart = row;
+        for (int i = 0; i < kCount; ++i) {
+            char label[64];
+            int p = 0;
+            for (int j = 0; kThemes[i].name[j] && p < 60; ++j) label[p++] = kThemes[i].name[j];
+            if (kThemes[i].id == Theme::CurrentId()) {
+                for (const char* s = "  [current]"; *s && p < 62; ++s) label[p++] = *s;
+            }
+            label[p] = '\0';
+            DrawMenuItem(menuStart + i, label, i == cursor);
+        }
+
+        row = menuStart + kCount + 1;
+        DrawSeparator(row - 1);
+        Renderer::DrawText(2, row,
+            Concat2("Active: ", Theme::CurrentName()),
+            Theme::Current().TextDim);
+
+        DrawFooter("[Up/Down] Navigate  [Enter] Apply  [Esc] Cancel");
+        Renderer::Present();
+
+        EFI_INPUT_KEY key = Renderer::WaitKey();
+        if (key.ScanCode == SCAN_UP)
+            cursor = (cursor - 1 + kCount) % kCount;
+        else if (key.ScanCode == SCAN_DOWN)
+            cursor = (cursor + 1) % kCount;
+        else if (key.ScanCode == SCAN_ESC)
+            return;
+        else if (key.UnicodeChar == '\r' || key.UnicodeChar == '\n') {
+            Theme::Set(kThemes[cursor].id);
+            return; // caller's next Clear()/Present() picks up new colours
+        }
+    }
+}
+
 // ── Resolution Picker ─────────────────────────────────────────
 
 void Tui::ShowResolutionPicker() {
@@ -506,7 +567,7 @@ void Tui::ShowResolutionPicker() {
     if (modeCount == 0) {
         Renderer::Clear();
         DrawHeader("Change Resolution");
-        Renderer::DrawText(2, 5, "No additional modes available.", Theme::Warning);
+        Renderer::DrawText(2, 5, "No additional modes available.", Theme::Current().Warning);
         DrawFooter("[Any key] Back");
         Renderer::Present();
         Renderer::WaitKey();
@@ -524,7 +585,7 @@ void Tui::ShowResolutionPicker() {
         Renderer::Clear();
         int row = DrawHeader("Change Resolution");
         row++;
-        Renderer::DrawText(2, row, "Select a display resolution:", Theme::TextDim);
+        Renderer::DrawText(2, row, "Select a display resolution:", Theme::Current().TextDim);
         row += 2;
 
         int menuStart = row;
@@ -550,7 +611,7 @@ void Tui::ShowResolutionPicker() {
         Renderer::DrawText(2, row,
             Concat3("Current: ", UintToStr(Renderer::ScreenWidth()),
                     Concat2("x", UintToStr(Renderer::ScreenHeight()))),
-            Theme::TextDim);
+            Theme::Current().TextDim);
 
         DrawFooter("[Up/Down] Navigate  [Enter] Apply  [Esc] Cancel");
         Renderer::Present();
@@ -570,11 +631,11 @@ void Tui::ShowResolutionPicker() {
                 // Redraw immediately after mode switch
                 Renderer::Clear();
                 DrawHeader("Change Resolution");
-                Renderer::DrawText(2, 5, "Resolution applied.", Theme::Success);
+                Renderer::DrawText(2, 5, "Resolution applied.", Theme::Current().Success);
                 Renderer::DrawText(2, 7,
                     Concat3(UintToStr(Renderer::ScreenWidth()), "x",
                             UintToStr(Renderer::ScreenHeight())),
-                    Theme::Text);
+                    Theme::Current().Text);
                 DrawFooter("[Any key] Continue");
                 Renderer::Present();
                 Renderer::WaitKey();
@@ -592,8 +653,8 @@ void Tui::ShowSystemInfo() {
     row++;
 
     auto DrawInfoLine = [&](const char* label, const char* value) {
-        Renderer::DrawText(2, row, Renderer::Pad(label, 22), Theme::Accent);
-        Renderer::DrawText(24, row, value, Theme::Text);
+        Renderer::DrawText(2, row, Renderer::Pad(label, 22), Theme::Current().Accent);
+        Renderer::DrawText(24, row, value, Theme::Current().Text);
         row++;
     };
 
@@ -627,7 +688,7 @@ void Tui::ShowSystemInfo() {
 
     IBenchmark** all = BenchmarkRegistry::GetAll();
     UINTN count = BenchmarkRegistry::Count();
-    Renderer::DrawText(2, row, "Benchmarks:", Theme::TextDim);
+    Renderer::DrawText(2, row, "Benchmarks:", Theme::Current().TextDim);
     row++;
 
     DurationClass lastDc = DurationClass::Long;
@@ -637,7 +698,7 @@ void Tui::ShowSystemInfo() {
             const char* hdr = (dc == DurationClass::Short)
                 ? "  [Short running]"
                 : "  [Long running]";
-            Renderer::DrawText(2, row, hdr, Theme::TextDim);
+            Renderer::DrawText(2, row, hdr, Theme::Current().TextDim);
             row++;
             lastDc = dc;
         }
@@ -658,7 +719,7 @@ void Tui::ShowSystemInfo() {
                             (tm == ThreadingMode::MultiOnly)  ? "Multi" : "Either";
         for (int j = 0; tmStr[j] && p < 80; ++j) line[p++] = tmStr[j];
         line[p] = '\0';
-        Renderer::DrawText(2, row, line, Theme::Text);
+        Renderer::DrawText(2, row, line, Theme::Current().Text);
         row++;
     }
 

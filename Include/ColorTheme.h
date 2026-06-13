@@ -1,6 +1,6 @@
 #pragma once
-// Colour palette for the TUI. All colours are 32-bit ARGB (0xAARRGGBB).
-// The alpha channel is ignored by GOP but kept for clarity.
+// Runtime colour palette system for the TUI.
+// Three built-in themes: Dark (default), Light, High-contrast dark.
 
 #include "UefiTypes.h"
 
@@ -23,19 +23,106 @@ struct Color {
     }
 };
 
+// ── Palette ───────────────────────────────────────────────────
+
+struct Palette {
+    Color Background;
+    Color HeaderBorder;
+    Color HeaderText;
+    Color Text;
+    Color TextDim;
+    Color Highlight;
+    Color HighlightTxt;
+    Color Accent;
+    Color Success;
+    Color Warning;
+    Color Error;
+    Color Separator;
+    Color CheckMark;
+    Color Footer;
+};
+
+// ── Built-in palettes ─────────────────────────────────────────
+
+namespace ThemePalettes {
+
+constexpr Palette kDark = {
+    /*Background  */ { 10,  10,  28},
+    /*HeaderBorder*/ {  0, 180, 216},
+    /*HeaderText  */ {255, 255, 255},
+    /*Text        */ {210, 210, 210},
+    /*TextDim     */ {120, 120, 130},
+    /*Highlight   */ {  0,  70,  90},
+    /*HighlightTxt*/ {255, 255, 255},
+    /*Accent      */ {  0, 200, 220},
+    /*Success     */ { 80, 200,  80},
+    /*Warning     */ {220, 180,   0},
+    /*Error       */ {220,  60,  60},
+    /*Separator   */ { 50,  50,  70},
+    /*CheckMark   */ {  0, 220, 160},
+    /*Footer      */ {180, 160,  60},
+};
+
+constexpr Palette kLight = {
+    /*Background  */ {245, 245, 245},
+    /*HeaderBorder*/ {  0, 120, 160},
+    /*HeaderText  */ { 20,  20,  60},
+    /*Text        */ { 30,  30,  30},
+    /*TextDim     */ {100, 100, 110},
+    /*Highlight   */ {180, 220, 240},
+    /*HighlightTxt*/ { 20,  20,  60},
+    /*Accent      */ {  0, 130, 160},
+    /*Success     */ { 20, 140,  20},
+    /*Warning     */ {170, 110,   0},
+    /*Error       */ {180,  30,  30},
+    /*Separator   */ {190, 190, 200},
+    /*CheckMark   */ {  0, 150,  90},
+    /*Footer      */ {110,  90,  10},
+};
+
+constexpr Palette kHighContrastDark = {
+    /*Background  */ {  0,   0,   0},
+    /*HeaderBorder*/ {255, 255,   0},
+    /*HeaderText  */ {255, 255, 255},
+    /*Text        */ {255, 255, 255},
+    /*TextDim     */ {200, 200, 200},
+    /*Highlight   */ {255, 255,   0},
+    /*HighlightTxt*/ {  0,   0,   0},
+    /*Accent      */ {  0, 255, 255},
+    /*Success     */ {  0, 255,   0},
+    /*Warning     */ {255, 200,   0},
+    /*Error       */ {255,   0,   0},
+    /*Separator   */ {128, 128, 128},
+    /*CheckMark   */ {  0, 255, 180},
+    /*Footer      */ {255, 200,   0},
+};
+
+} // namespace ThemePalettes
+
+// ── Runtime theme selection ───────────────────────────────────
+
+enum class ThemeId { Dark = 0, Light = 1, HighContrastDark = 2 };
+
 namespace Theme {
-    constexpr Color Background   {  10,  10,  28 };
-    constexpr Color HeaderBorder {   0, 180, 216 };
-    constexpr Color HeaderText   { 255, 255, 255 };
-    constexpr Color Text         { 210, 210, 210 };
-    constexpr Color TextDim      { 120, 120, 130 };
-    constexpr Color Highlight    {   0,  70,  90 };
-    constexpr Color HighlightTxt { 255, 255, 255 };
-    constexpr Color Accent       {   0, 200, 220 };
-    constexpr Color Success      {  80, 200,  80 };
-    constexpr Color Warning      { 220, 180,   0 };
-    constexpr Color Error        { 220,  60,  60 };
-    constexpr Color Separator    {  50,  50,  70 };
-    constexpr Color CheckMark    {   0, 220, 160 };
-    constexpr Color Footer       { 180, 160,  60 };
+
+inline ThemeId sActiveTheme = ThemeId::Dark;
+
+inline const Palette& Current() {
+    switch (sActiveTheme) {
+        case ThemeId::Light:            return ThemePalettes::kLight;
+        case ThemeId::HighContrastDark: return ThemePalettes::kHighContrastDark;
+        default:                        return ThemePalettes::kDark;
+    }
 }
+
+inline void     Set(ThemeId id) { sActiveTheme = id; }
+inline ThemeId  CurrentId()     { return sActiveTheme; }
+inline const char* CurrentName() {
+    switch (sActiveTheme) {
+        case ThemeId::Light:            return "Light";
+        case ThemeId::HighContrastDark: return "High-contrast dark";
+        default:                        return "Dark";
+    }
+}
+
+} // namespace Theme

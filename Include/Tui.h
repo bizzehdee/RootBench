@@ -19,6 +19,7 @@ private:
     void ShowResults();
     void ShowSystemInfo();
     void ShowResolutionPicker();
+    void ShowThemePicker();
 
     // UI helpers
     int  DrawHeader(const char* title, int startRow = 0);

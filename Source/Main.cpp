@@ -51,8 +51,8 @@ extern "C" EFI_STATUS EFIAPI EfiMain(
 
     if (gopOk) {
         Renderer::Clear();
-        Renderer::DrawText(2, 1, "UEFI Benchmark Suite", Theme::Accent);
-        Renderer::DrawText(2, 3, "Calibrating timer...", Theme::TextDim);
+        Renderer::DrawText(2, 1, "UEFI Benchmark Suite", Theme::Current().Accent);
+        Renderer::DrawText(2, 3, "Calibrating timer...", Theme::Current().TextDim);
         Renderer::Present();
     } else {
         ConPrintLine("GOP unavailable - using text mode.");
@@ -64,7 +64,7 @@ extern "C" EFI_STATUS EFIAPI EfiMain(
 
     if (gopOk) {
         Renderer::DrawText(2, 4, Timer::IsCalibrated() ? "Timer calibrated." : "Timer calibration failed!",
-                           Timer::IsCalibrated() ? Theme::Success : Theme::Error);
+                           Timer::IsCalibrated() ? Theme::Current().Success : Theme::Current().Error);
 
         if (Timer::IsCalibrated()) {
             char tbuf[64];
@@ -75,11 +75,11 @@ extern "C" EFI_STATUS EFIAPI EfiMain(
             for (int i = 0; tbuf[i]; ++i) line[p++] = tbuf[i];
             for (const char* s = " cycles/us"; *s; ++s) line[p++] = *s;
             line[p] = '\0';
-            Renderer::DrawText(2, 5, line, Theme::TextDim);
+            Renderer::DrawText(2, 5, line, Theme::Current().TextDim);
         }
 
         if (!Timer::HasInvariantTSC())
-            Renderer::DrawText(2, 6, "Warning: Invariant TSC not detected", Theme::Warning);
+            Renderer::DrawText(2, 6, "Warning: Invariant TSC not detected", Theme::Current().Warning);
     } else {
         ConPrintLine(Timer::IsCalibrated() ? "Timer calibrated." : "Timer calibration FAILED.");
     }
@@ -89,13 +89,13 @@ extern "C" EFI_STATUS EFIAPI EfiMain(
     CpuFeatures::Detect();
 
     if (gopOk) {
-        Renderer::DrawText(2, 8, "Detecting system resources...", Theme::TextDim);
+        Renderer::DrawText(2, 8, "Detecting system resources...", Theme::Current().TextDim);
         char info[128];
         int p = 0;
         const char* cpu = SystemInfo::GetCpuBrand();
         for (int i = 0; cpu[i] && p < 120; ++i) info[p++] = cpu[i];
         info[p] = '\0';
-        Renderer::DrawText(2, 9, info, Theme::Text);
+        Renderer::DrawText(2, 9, info, Theme::Current().Text);
 
         p = 0;
         for (const char* s = "Memory: "; *s; ++s) info[p++] = *s;
@@ -104,7 +104,7 @@ extern "C" EFI_STATUS EFIAPI EfiMain(
         for (int i = 0; mbuf[i]; ++i) info[p++] = mbuf[i];
         for (const char* s = " MB"; *s; ++s) info[p++] = *s;
         info[p] = '\0';
-        Renderer::DrawText(2, 10, info, Theme::Text);
+        Renderer::DrawText(2, 10, info, Theme::Current().Text);
 
         // Show detected CPU features
         const auto& feat = CpuFeatures::Get();
@@ -116,7 +116,7 @@ extern "C" EFI_STATUS EFIAPI EfiMain(
         if (feat.HasAESNI) { for (const char* s = "AES "; *s; ++s) fline[p++] = *s; }
         if (feat.HasSSE42) { for (const char* s = "SSE4.2 "; *s; ++s) fline[p++] = *s; }
         fline[p] = '\0';
-        Renderer::DrawText(2, 11, fline, Theme::TextDim);
+        Renderer::DrawText(2, 11, fline, Theme::Current().TextDim);
 
         Renderer::Present();
     }
@@ -179,8 +179,8 @@ extern "C" EFI_STATUS EFIAPI EfiMain(
         for (int i = 0; nbuf[i]; ++i) msg[p++] = nbuf[i];
         for (const char* s = " benchmarks loaded."; *s; ++s) msg[p++] = *s;
         msg[p] = '\0';
-        Renderer::DrawText(2, 13, msg, Theme::TextDim);
-        Renderer::DrawText(2, 15, "Press any key to continue...", Theme::Warning);
+        Renderer::DrawText(2, 13, msg, Theme::Current().TextDim);
+        Renderer::DrawText(2, 15, "Press any key to continue...", Theme::Current().Warning);
         Renderer::Present();
         Renderer::WaitKey();
     } else {

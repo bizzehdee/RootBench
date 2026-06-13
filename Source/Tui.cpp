@@ -924,8 +924,14 @@ void Tui::ShowSystemInfo() {
         row++;
     };
 
+    auto FormatCacheKB = [](UINT32 kb) -> const char* {
+        if (kb >= 1024) return Concat2(UintToStr(kb / 1024), " MB");
+        return Concat2(UintToStr(kb), " KB");
+    };
+
     DrawInfoLine("CPU Vendor:",        SystemInfo::GetCpuVendor());
     DrawInfoLine("CPU Brand:",         SystemInfo::GetCpuBrand());
+    DrawInfoLine("CPU Stepping:",      UintToStr(SystemInfo::GetCpuStepping()));
     DrawInfoLine("Logical CPUs:",      UintToStr(SystemInfo::GetCpuCoreCount()));
     DrawInfoLine("MP Services:",       SystemInfo::HasMpServices() ? "Available" : "Not available");
     if (SystemInfo::HasMpServices()) {
@@ -938,7 +944,24 @@ void Tui::ShowSystemInfo() {
         apStr[p] = '\0';
         DrawInfoLine("Processors:",    apStr);
     }
+    if (SystemInfo::GetL1DataCacheKB() > 0)
+        DrawInfoLine("L1D Cache:",     FormatCacheKB(SystemInfo::GetL1DataCacheKB()));
+    if (SystemInfo::GetL1InstCacheKB() > 0)
+        DrawInfoLine("L1I Cache:",     FormatCacheKB(SystemInfo::GetL1InstCacheKB()));
+    if (SystemInfo::GetL2CacheKB() > 0)
+        DrawInfoLine("L2 Cache:",      FormatCacheKB(SystemInfo::GetL2CacheKB()));
+    DrawInfoLine("L3 Cache:",          SystemInfo::GetL3CacheKB() > 0
+                                           ? FormatCacheKB(SystemInfo::GetL3CacheKB())
+                                           : "None");
+    row++;
     DrawInfoLine("Available Memory:",  Concat2(UintToStr(SystemInfo::GetTotalMemoryMB()), " MB"));
+    if (SystemInfo::GetMemorySpeedMHz() > 0)
+        DrawInfoLine("Memory Speed:",  Concat2(UintToStr(SystemInfo::GetMemorySpeedMHz()), " MHz"));
+    if (SystemInfo::GetMemoryConfiguredSpeedMHz() > 0 &&
+        SystemInfo::GetMemoryConfiguredSpeedMHz() != SystemInfo::GetMemorySpeedMHz())
+        DrawInfoLine("Configured:",    Concat2(UintToStr(SystemInfo::GetMemoryConfiguredSpeedMHz()), " MHz"));
+    if (SystemInfo::GetMemoryChannelCount() > 0)
+        DrawInfoLine("Mem Channels:",  UintToStr(SystemInfo::GetMemoryChannelCount()));
     DrawInfoLine("Display:",           Concat3(UintToStr(Renderer::ScreenWidth()), "x",
                                                UintToStr(Renderer::ScreenHeight())));
     DrawInfoLine("Text Grid:",         Concat3(UintToStr(Renderer::Columns()), "x",

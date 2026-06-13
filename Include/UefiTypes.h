@@ -503,6 +503,20 @@ struct EFI_MP_SERVICES_PROTOCOL {
     { 0x3fdda605, 0xa76e, 0x4f46, \
       { 0xad, 0x29, 0x12, 0xf4, 0x53, 0x1b, 0x3d, 0x08 } }
 
+// ── Configuration Table (for SMBIOS and other table lookup) ──
+typedef struct {
+    EFI_GUID VendorGuid;
+    VOID*    VendorTable;
+} EFI_CONFIGURATION_TABLE;
+
+// SMBIOS 2.x table GUID
+#define SMBIOS_TABLE_GUID \
+    { 0xeb9d2d31, 0x2d88, 0x11d3, { 0x9a, 0x16, 0x00, 0x90, 0x27, 0x3f, 0xc1, 0x4d } }
+
+// SMBIOS 3.x table GUID (64-bit entry point)
+#define SMBIOS3_TABLE_GUID \
+    { 0xf2fd1544, 0x9794, 0x4a2c, { 0x99, 0x2e, 0xe5, 0xbb, 0xcf, 0x20, 0xe3, 0x94 } }
+
 // ── Global accessors (set once in EfiMain) ───────────────────
 extern EFI_SYSTEM_TABLE*   gST;
 extern EFI_BOOT_SERVICES*  gBS;

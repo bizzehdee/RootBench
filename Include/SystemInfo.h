@@ -32,13 +32,14 @@ UINT32      GetMemoryChannelCount();       // inferred from SMBIOS bank locator 
 UINT32      GetMemoryVoltageMv();          // configured voltage in mV (0 if unknown)
 const char* GetMemoryType();               // e.g. "DDR4", "DDR5", "Unknown"
 
-// DRAM timings read directly from SPD via SMBus (0 if not available).
-// Populated for DDR4 and DDR5; DDR3 and older show 0.
+// Actual configured DRAM timings from the CPU's integrated memory controller
+// (AMD SMN/UMC registers or Intel MCHBAR). Falls back to JEDEC SPD base
+// timings if IMC registers are unavailable. Returns 0 if not detected.
 UINT32 GetSpdTCL();
 UINT32 GetSpdTRCD();
 UINT32 GetSpdTRP();
 UINT32 GetSpdTRAS();
-bool   IsSpdDdr5();   // true when DDR5 DIMMs detected (DDR5 timing bytes read separately)
+bool   IsSpdDdr5();   // true when DDR5 DIMMs detected via SPD
 
 // SMBus detection diagnostics — populated by DetectSpd(), useful for debug.
 struct SmbusDebugInfo {

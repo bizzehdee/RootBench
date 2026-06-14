@@ -29,6 +29,7 @@ static UINT32 sSpdTRCD  = 0;
 static UINT32 sSpdTRP   = 0;
 static UINT32 sSpdTRAS  = 0;
 static bool   sSpdDdr5  = false;
+static bool   sSmbusIsIntel = false;
 
 static SmbusDebugInfo sSmbusDebug = {
     0xFF, 0xFF, 0, 0,          // Dev, Fn, Vid, Did
@@ -387,8 +388,102 @@ static void DetectSmbios() {
         ParseSmbiosTable(tableStart, tableLen);
 }
 
+// ── IMC timing registers ──────────────────────────────────────
+// Reads actual configured tCL/tRCD/tRP/tRAS from the integrated memory
+// controller. AMD uses SMN indirect access; Intel uses MCHBAR MMIO.
+// These are the values the MC is programmed to, not JEDEC SPD defaults.
+
+// Forward declarations (defined in the SMBus section below)
+static UINT32 PciCfgRead32Spd(UINT8 dev, UINT8 fn, UINT8 off);
+static void   PciCfgWrite32Spd(UINT8 dev, UINT8 fn, UINT8 off, UINT32 val);
+
+static UINT32 ReadSmn(UINT32 addr) {
+    // AMD SMN index/data registers live at the root complex (B0:D0:F0), not D18.
+    PciCfgWrite32Spd(0, 0, 0x60, addr);
+    return PciCfgRead32Spd(0, 0, 0x64);
+}
+
+static inline UINT32 MmioRead32(UINT64 addr) {
+    return *reinterpret_cast<volatile const UINT32*>(static_cast<UINTN>(addr));
+}
+
+static void DetectImcTimingsAmd() {
+    // UMC channel bases: ch0=0x50000, ch1=0x150000.
+    // TimingCfgA (base+0x200): CL[5:0], RCDWR[13:8], RCDRD[21:16], RP[29:24]
+    // TimingCfgB (base+0x204): RAS[6:0]
+    for (UINT8 ch = 0; ch < 2; ++ch) {
+        UINT32 base = 0x50000U | ((UINT32)ch << 20);
+        UINT32 t1   = ReadSmn(base + 0x200);
+        UINT32 t2   = ReadSmn(base + 0x204);
+        if (t1 == 0 || t1 == 0xFFFFFFFF) continue;
+        UINT32 cl = t1 & 0x3F;
+        if (cl == 0 || cl > 128) continue;
+        sSpdTCL  = cl;
+        sSpdTRCD = (t1 >> 16) & 0x3F;  // RCDRD
+        sSpdTRP  = (t1 >> 24) & 0x3F;
+        sSpdTRAS = t2 & 0x7F;
+        return;
+    }
+}
+
+static void DetectImcTimingsIntelSkl(UINT64 mchbar) {
+    // Skylake through Comet Lake (channel base 0x4000/0x4400).
+    // TC_PRE (+0x024): tRP[5:0], tRCDR[21:16]
+    // TC_ACT (+0x028): tRAS[7:0]
+    // TC_ODT (+0x070): tCL[4:0]
+    for (UINT32 ch = 0; ch <= 0x400; ch += 0x400) {
+        UINT32 tc_pre = MmioRead32(mchbar + 0x4000 + ch + 0x024);
+        UINT32 tc_act = MmioRead32(mchbar + 0x4000 + ch + 0x028);
+        UINT32 tc_odt = MmioRead32(mchbar + 0x4070 + ch);
+        UINT32 cl = tc_odt & 0x1F;
+        if (cl == 0 || cl > 64) continue;
+        sSpdTCL  = cl;
+        sSpdTRP  = tc_pre & 0x3F;
+        sSpdTRCD = (tc_pre >> 16) & 0x3F;
+        sSpdTRAS = tc_act & 0xFF;
+        return;
+    }
+}
+
+static void DetectImcTimingsIntelAdl(UINT64 mchbar) {
+    // Alder Lake / Raptor Lake / Meteor Lake (0xExxx register layout).
+    UINT32 t0   = MmioRead32(mchbar + 0xE000);
+    UINT32 t1   = MmioRead32(mchbar + 0xE004);
+    UINT32 tcas = MmioRead32(mchbar + 0xE070);
+    UINT32 cl = (tcas >> 16) & 0x7F;
+    if (cl == 0 || cl > 128) return;
+    sSpdTCL  = cl;
+    sSpdTRP  = t0 & 0xFF;
+    sSpdTRAS = (t1 >> 10) & 0x1FF;
+    sSpdTRCD = (t1 >> 19) & 0xFF;
+}
+
+static void DetectImcTimingsIntel() {
+    // MCHBAR base is a 64-bit value at PCI B0:D0:F0 cfg offsets 0x48/0x4C.
+    UINT32 mchLo = PciCfgRead32Spd(0, 0, 0x48);
+    UINT32 mchHi = PciCfgRead32Spd(0, 0, 0x4C);
+    if (!(mchLo & 1)) PciCfgWrite32Spd(0, 0, 0x48, mchLo | 1);
+    UINT64 mchbar = ((UINT64)mchHi << 32) | (mchLo & ~(UINT64)1);
+    if (!mchbar) return;
+
+    // Determine register layout by effective CPU model.
+    // ADL/RPL/MTL (models >= 0x97) moved to the 0xExxx layout.
+    UINT32 eax, ebx, ecx, edx;
+    CpuidRaw(1, 0, eax, ebx, ecx, edx);
+    UINT32 mod = ((eax >> 4) & 0xF) | (((eax >> 16) & 0xF) << 4);
+    if (mod >= 0x97)
+        DetectImcTimingsIntelAdl(mchbar);
+    else
+        DetectImcTimingsIntelSkl(mchbar);
+}
+
+static void DetectImcTimings() {
+    if (sVendor[0] == 'A')       DetectImcTimingsAmd();    // AuthenticAMD
+    else if (sVendor[0] == 'G')  DetectImcTimingsIntel();  // GenuineIntel
+}
+
 // ── SPD via SMBus I/O ─────────────────────────────────────────
-// Reads DDR4 DRAM timings (tCL/tRCD/tRP/tRAS) from DIMM SPD EEPROMs.
+// Reads DDR type and JEDEC base timings from DIMM SPD EEPROMs via SMBus.
 // SMBus controller is located by scanning PCI bus 0 for class 0x0C/0x05.
 // All I/O is via port IN/OUT (CPL=0 UEFI pre-boot environment).
 
@@ -422,8 +517,12 @@ static void PciCfgWrite32Spd(UINT8 dev, UINT8 fn, UINT8 off, UINT32 val) {
     __asm__ volatile("outl %0, %1" : : "a"(val), "Nd"((UINT16)0x0CFC));
 }
 
-static UINT16 FindSmbusIoBase() {
-    for (UINT8 dev = 0; dev < 32; ++dev) {
+// Returns the number of SMBus I/O bases found (up to maxOut).
+// AMD FCH exposes two buses (0x0B00 primary, 0x0B20 secondary); both are
+// checked so DIMMs wired to the secondary bus are not missed.
+static UINT8 FindSmbusIoBases(UINT16 out[], UINT8 maxOut) {
+    UINT8 count = 0;
+    for (UINT8 dev = 0; dev < 32 && count < maxOut; ++dev) {
         for (UINT8 fn = 0; fn < 8; ++fn) {
             UINT32 id = PciCfgRead32Spd(dev, fn, 0x00);
             if ((id & 0xFFFF) == 0xFFFF) { if (fn == 0) break; continue; }
@@ -456,7 +555,11 @@ static UINT16 FindSmbusIoBase() {
                 UINT32 bar = PciCfgRead32Spd(dev, fn, 0x20);
                 if (bar & 1) {
                     UINT16 ioAddr = (UINT16)(bar & 0xFFFE);
-                    if (ioAddr > 0x0F) return ioAddr;
+                    if (ioAddr > 0x0F) {
+                        sSmbusIsIntel = true;
+                        out[count++] = ioAddr;
+                        return count;
+                    }
                 }
             } else if (vid == 0x1022) {
                 // Older AMD FCH (Hudson-2/Bolton SB8xx/SB9xx): SMBHOSTADDR at
@@ -464,7 +567,8 @@ static UINT16 FindSmbusIoBase() {
                 UINT16 amdBase = (UINT16)(PciCfgRead32Spd(dev, fn, 0x90) & 0xFFF0);
                 if (amdBase > 0x0F) {
                     sSmbusDebug.PmioSmba = 0;
-                    return amdBase;
+                    out[count++] = amdBase;
+                    return count;
                 }
                 // Read PMIO 0x2C/0x2D for diagnostics only. NOTE: index 0x2C is
                 // the SB800-era SMBus base register; on all Zen FCH (Hudson-2
@@ -473,10 +577,12 @@ static UINT16 FindSmbusIoBase() {
                 // yields junk (e.g. 0x0080 == the POST port), so never trust it.
                 UINT16 pmio = (UINT16)PmioReadB(0x2C) | ((UINT16)PmioReadB(0x2D) << 8);
                 sSmbusDebug.PmioSmba = pmio;
-                // The AMD FCH host SMBus I/O base is hardwired to 0x0B00 on every
-                // SB8xx/SB9xx/Bolton/Hudson/Zen FCH. The DIMM SPD EEPROMs live on
-                // this primary bus. Use it directly.
-                return 0x0B00;
+                // AMD FCH SMBus I/O bases are hardwired: 0x0B00 (primary, host SMBus
+                // where DIMM SPD EEPROMs live) and 0x0B20 (secondary, same controller).
+                // Try both so DIMMs on either segment are found.
+                if (count < maxOut) out[count++] = 0x0B00;
+                if (count < maxOut) out[count++] = 0x0B20;
+                return count;
             }
 
             // Generic fallback: scan BAR registers for any I/O BAR
@@ -484,11 +590,11 @@ static UINT16 FindSmbusIoBase() {
                 UINT32 bar = PciCfgRead32Spd(dev, fn, b);
                 if (!(bar & 1)) continue;
                 UINT16 ioAddr = (UINT16)(bar & 0xFFFE);
-                if (ioAddr > 0x0F) return ioAddr;
+                if (ioAddr > 0x0F) { out[count++] = ioAddr; return count; }
             }
         }
     }
-    return 0;
+    return count;
 }
 
 static void IoDelay() {
@@ -497,17 +603,27 @@ static void IoDelay() {
 
 // Reset the SMBus controller — clears stuck HOST_BUSY without putting any
 // new transaction on the wire (which could re-lock a stuck bus).
+// The Intel I801 KILL bit (SMBHSTCNT bit 1) aborts any in-flight transaction
+// immediately; AMD Piix4 has no KILL bit so we just clear status and wait.
 static void ResetSmbusController(UINT16 base) {
-    IoOutB(base, 0xFF);      // clear all writable status bits
+    IoOutB(base, 0xFF);      // clear all writable status bits in HSTSTS
     IoDelay();
-    IoOutB(base + 2, 0x02);  // KILL bit: abort the current transaction immediately
-    IoDelay();
-    for (UINT32 t = 50000; t; --t) {
-        if (!(IoInB(base) & 1)) break;
-        IoInB(0x80);
+    if (sSmbusIsIntel) {
+        IoOutB(base + 2, 0x02);  // KILL bit: abort current transaction
+        IoDelay();
+        for (UINT32 t = 50000; t; --t) {
+            if (!(IoInB(base) & 1)) break;
+            IoInB(0x80);
+        }
+        IoOutB(base + 2, 0x00);  // clear KILL bit
+        IoOutB(base, 0xFF);      // clear FAILED and any bits set by KILL
+    } else {
+        for (UINT32 t = 50000; t; --t) {
+            if (!(IoInB(base) & 1)) break;
+            IoInB(0x80);
+        }
+        IoOutB(base, 0xFF);
     }
-    IoOutB(base + 2, 0x00);  // clear KILL bit
-    IoOutB(base, 0xFF);      // clear FAILED and any other bits set by KILL
     IoDelay();
 }
 
@@ -534,23 +650,7 @@ static UINT8 ReadSmbByte(UINT16 base, UINT8 addr, UINT8 reg) {
     return (sts & 0x02) ? IoInB(base + 5) : (UINT8)0xFF;
 }
 
-static void DetectSpd() {
-    UINT16 base = FindSmbusIoBase();
-    sSmbusDebug.IoBase = base;
-    if (!base) return;
-
-    sSmbusDebug.InitHststs = IoInB(base);
-
-    // Reset the controller if it's busy (e.g., left over from firmware)
-    if (IoInB(base) & 1) {
-        ResetSmbusController(base);
-        if (IoInB(base) & 1) return; // still stuck, can't use SMBus
-    } else {
-        // Even if idle, clear any stale error bits
-        IoOutB(base, 0xFF);
-        IoDelay();
-    }
-
+static bool ScanSpdBus(UINT16 base) {
     // SPD EEPROMs are at SMBus addresses 0x50–0x57 (one per slot)
     for (UINT8 slot = 0x50; slot <= 0x57; ++slot) {
         UINT8 b0 = ReadSmbByte(base, slot, 0);
@@ -594,7 +694,7 @@ static void DetectSpd() {
             sSpdTRCD = CeilDiv5(tRCD, tCK);
             sSpdTRP  = CeilDiv5(tRP,  tCK);
             sSpdTRAS = CeilDiv5(tRAS, tCK);
-            break;
+            return true;
         }
         else if (devType == 0x0C) {
             // DDR4 SPD (JEDEC SPD4) — all timings in MTB (Medium Timebase) units
@@ -618,8 +718,32 @@ static void DetectSpd() {
             sSpdTRCD = CeilDiv((UINT32)tRCDmin, (UINT32)tCKmin);
             sSpdTRP  = CeilDiv((UINT32)tRPmin,  (UINT32)tCKmin);
             sSpdTRAS = CeilDiv(tRAS,             (UINT32)tCKmin);
-            break; // first populated DDR4 DIMM wins
+            return true; // first populated DDR4 DIMM wins
         }
+    }
+    return false;
+}
+
+static void DetectSpd() {
+    UINT16 bases[2];
+    UINT8 baseCount = FindSmbusIoBases(bases, 2);
+    if (!baseCount) return;
+
+    for (UINT8 i = 0; i < baseCount; ++i) {
+        UINT16 base = bases[i];
+        sSmbusDebug.IoBase = base;
+        sSmbusDebug.InitHststs = IoInB(base);
+
+        // Reset the controller if it's busy (e.g., left over from firmware)
+        if (IoInB(base) & 1) {
+            ResetSmbusController(base);
+            if (IoInB(base) & 1) continue; // still stuck, try next bus
+        } else {
+            IoOutB(base, 0xFF);  // clear any stale error bits
+            IoDelay();
+        }
+
+        if (ScanSpdBus(base)) return; // found timings, done
     }
 }
 
@@ -633,7 +757,8 @@ void Detect() {
     DetectMemory();
     DetectMpServices();
     DetectSmbios();
-    DetectSpd();
+    DetectSpd();          // sets DDR type (DDR4/DDR5) + JEDEC base timings as fallback
+    DetectImcTimings();   // overwrites timings with live MC register values
 }
 
 const char* GetCpuVendor()     { return sVendor; }

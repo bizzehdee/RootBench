@@ -233,10 +233,25 @@ typedef EFI_STATUS (EFIAPI *EFI_GRAPHICS_OUTPUT_PROTOCOL_SET_MODE)(
     IN UINT32 ModeNumber
 );
 
+typedef struct {
+    UINT8 Blue;
+    UINT8 Green;
+    UINT8 Red;
+    UINT8 Reserved;
+} EFI_GRAPHICS_OUTPUT_BLT_PIXEL;
+
+typedef enum {
+    EfiBltVideoFill          = 0,
+    EfiBltVideoToBltBuffer   = 1,
+    EfiBltBufferToVideo      = 2,
+    EfiBltVideoToVideo       = 3,
+    EfiGraphicsOutputBltOperationMax
+} EFI_GRAPHICS_OUTPUT_BLT_OPERATION;
+
 typedef EFI_STATUS (EFIAPI *EFI_GRAPHICS_OUTPUT_PROTOCOL_BLT)(
     IN struct EFI_GRAPHICS_OUTPUT_PROTOCOL *This,
-    IN VOID *BltBuffer OPTIONAL,
-    IN UINTN BltOperation,
+    IN EFI_GRAPHICS_OUTPUT_BLT_PIXEL *BltBuffer OPTIONAL,
+    IN EFI_GRAPHICS_OUTPUT_BLT_OPERATION BltOperation,
     IN UINTN SourceX, IN UINTN SourceY,
     IN UINTN DestinationX, IN UINTN DestinationY,
     IN UINTN Width, IN UINTN Height,

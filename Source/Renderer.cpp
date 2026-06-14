@@ -24,19 +24,27 @@ static EFI_GRAPHICS_OUTPUT_PROTOCOL* sGop = nullptr;
 
 // ── Internal helpers ─────────────────────────────────────────
 
-// Convert a Color to a framebuffer pixel according to detected pixel format
+// Convert a Color to the pixel format used by the shadow buffer.
+// In GopBlt mode (VIDEO_BLT=1) the shadow buffer must be in
+// EFI_GRAPHICS_OUTPUT_BLT_PIXEL order (BGRA) regardless of the underlying
+// hardware format — GOP->Blt() handles the hardware-side conversion.
+// In direct-MMIO mode the shadow buffer matches the hardware pixel format.
 static inline UINT32 ToPixel(Color c) {
+#if VIDEO_BLT
+    return static_cast<UINT32>(c.B)
+         | (static_cast<UINT32>(c.G) << 8)
+         | (static_cast<UINT32>(c.R) << 16);
+#else
     if (sIsBGR) {
-        // PixelBlueGreenRedReserved8BitPerColor (most common)
         return static_cast<UINT32>(c.B)
              | (static_cast<UINT32>(c.G) << 8)
              | (static_cast<UINT32>(c.R) << 16);
     } else {
-        // PixelRedGreenBlueReserved8BitPerColor
         return static_cast<UINT32>(c.R)
              | (static_cast<UINT32>(c.G) << 8)
              | (static_cast<UINT32>(c.B) << 16);
     }
+#endif
 }
 
 static void FillRect(int px, int py, int pw, int ph, Color color) {
@@ -166,7 +174,7 @@ modeFound:
     }
 
     sIsGop = true;
-    VideoEngine::Setup(sHwFb, sFramebuffer, sWidth, sHeight, sPitch);
+    VideoEngine::Setup(sHwFb, sFramebuffer, sWidth, sHeight, sPitch, sGop);
     Clear();
     Present();
     return true;
@@ -251,7 +259,7 @@ bool SetModeByIndex(UINT32 modeIndex) {
         return false;
     }
 
-    VideoEngine::Setup(sHwFb, sFramebuffer, sWidth, sHeight, sPitch);
+    VideoEngine::Setup(sHwFb, sFramebuffer, sWidth, sHeight, sPitch, sGop);
     Clear();
     Present();
     return true;

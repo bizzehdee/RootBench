@@ -14,6 +14,7 @@
 #include "Statistics.h"
 #include "Timer.h"
 #include "SystemInfo.h"
+#include "VideoEngine.h"
 
 // ── String builder helper (uses static buffer) ───────────────
 static char sBuf[256];
@@ -1364,6 +1365,13 @@ void Tui::ShowSystemInfo() {
     // ── Display & system section ──────────────────────────────────
     vp.AddLine();
     vp.AddLine("  [Display & System]", Theme::Current().TextDim);
+    {
+        RenderMode rm = VideoEngine::GetRenderMode();
+        const char* rmStr = (rm == RenderMode::GopBlt) ? "GOP Blt"          :
+                            (rm == RenderMode::Avx2)   ? "AVX2 non-temporal" :
+                                                         "Memcpy";
+        VpAddInfo(vp, "Render Mode:", rmStr);
+    }
     VpAddInfo(vp, "Display:",   Concat3(UintToStr(Renderer::ScreenWidth()),  "x",
                                         UintToStr(Renderer::ScreenHeight())));
     VpAddInfo(vp, "Text Grid:", Concat3(UintToStr(Renderer::Columns()), "x",

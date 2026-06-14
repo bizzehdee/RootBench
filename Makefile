@@ -111,6 +111,19 @@ CXXFLAGS = -std=c++17 \
            -MMD -MP \
            -DEFI_FUNCTION_WRAPPER
 
+# ── Render mode ───────────────────────────────────────────────
+# VIDEO_BLT=1 (default): flush dirty rows via GOP->Blt() (Boot Services).
+#   Shadow buffer is kept in EFI_GRAPHICS_OUTPUT_BLT_PIXEL (BGRA) order;
+#   the firmware converts to the hardware pixel format. Fast on most UEFI
+#   implementations. BSP-only — do not call Present() from APs in this mode.
+# VIDEO_BLT=0: write directly to FrameBufferBase using AVX2 non-temporal
+#   streaming stores (falls back to memcpy). Safe to call from APs.
+#   Shadow buffer is in the native hardware pixel format (BGR or RGB).
+VIDEO_BLT ?= 1
+ifeq ($(VIDEO_BLT),1)
+  CXXFLAGS += -DVIDEO_BLT=1
+endif
+
 ifeq ($(PLATFORM),windows)
   LDFLAGS = --subsystem 10 \
             --entry EfiMain \

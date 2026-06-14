@@ -1,12 +1,5 @@
-// High-performance double-buffered video blit engine (plan §22).
-// Shadow buffer (system RAM) → hardware GOP framebuffer blit using
-// AVX2 non-temporal streaming stores to maximise PCIe write throughput
-// and avoid polluting CPU caches with framebuffer data.
-//
-// The AVX2 path uses _mm256_loadu_si256 (unaligned load from shadow buffer,
-// which AllocatePool aligns to 8 bytes) and _mm256_stream_si256 (aligned
-// non-temporal store to the GOP framebuffer, which is always page-aligned).
-// A runtime guard falls back to optimized_memcpy if AVX2 is absent or not yet enabled.
+// Double-buffered video blit engine.
+// Render mode is selected at compile time via VIDEO_BLT (see VideoEngine.h).
 
 #include "VideoEngine.h"
 #include "CpuFeatures.h"
@@ -16,18 +9,16 @@
 namespace VideoEngine {
 
 // ── State ─────────────────────────────────────────────────────
-static FrameBufferTopology sTopo         = {};
-static UINT32              sDirtyStart   = 0;   // inclusive pixel row
-static UINT32              sDirtyEnd     = 0;   // exclusive pixel row
-static bool                sInitialized  = false;
+static FrameBufferTopology           sTopo        = {};
+static EFI_GRAPHICS_OUTPUT_PROTOCOL* sGop         = nullptr;
+static UINT32                        sDirtyStart  = 0;
+static UINT32                        sDirtyEnd    = 0;
+static bool                          sInitialized = false;
 
 // ── AVX2 streaming blit ───────────────────────────────────────
-// Tagged so the compiler emits AVX2 for this function even without a
-// global -mavx2 flag (matching the pattern used by FpVectorBenchmark).
 // dst must be 32-byte aligned — GOP framebuffers are page-aligned and
 // standard scanline widths (800, 1024, 1920 … ×4 bytes) are multiples
-// of 32, so every row-start address is 32-byte aligned in practice.
-
+// of 32, so every row-start is 32-byte aligned in practice.
 __attribute__((target("avx2")))
 static void BltAvx2(UINT8* dst, const UINT8* src, UINTN bytes) {
     // 1. Structural Alignment Guard
@@ -85,16 +76,17 @@ static void BltAvx2(UINT8* dst, const UINT8* src, UINTN bytes) {
 // ── Public API ────────────────────────────────────────────────
 
 void Setup(UINT32* hwFb, UINT32* shadow,
-           UINT32 width, UINT32 height, UINT32 pitch) {
+           UINT32 width, UINT32 height, UINT32 pitch,
+           EFI_GRAPHICS_OUTPUT_PROTOCOL* gop) {
     sTopo.HardwareBaseAddress  = hwFb;
     sTopo.ShadowBuffer         = shadow;
     sTopo.HorizontalResolution = width;
     sTopo.VerticalResolution   = height;
     sTopo.PixelsPerScanLine    = pitch;
+    sGop         = gop;
     sInitialized = (hwFb && shadow && width && height && pitch);
-    // Nothing dirty yet — caller will immediately draw and Present()
-    sDirtyStart = height;
-    sDirtyEnd   = 0;
+    sDirtyStart  = height;
+    sDirtyEnd    = 0;
 }
 
 void MarkDirty(UINT32 startRow, UINT32 endRow) {
@@ -110,20 +102,44 @@ void Present() {
     UINT32 end   = (sDirtyEnd < sTopo.VerticalResolution)
                    ? sDirtyEnd : sTopo.VerticalResolution;
 
-    UINTN pitch  = sTopo.PixelsPerScanLine;
-    UINTN offset = static_cast<UINTN>(start) * pitch * sizeof(UINT32);
-    UINTN bytes  = static_cast<UINTN>(end - start) * pitch * sizeof(UINT32);
+#if VIDEO_BLT
+    // ── GOP Blt path ──────────────────────────────────────────
+    // Shadow buffer is always in EFI_GRAPHICS_OUTPUT_BLT_PIXEL (BGRA) order
+    // (enforced by ToPixel() in Renderer.cpp when VIDEO_BLT=1). GOP->Blt()
+    // handles any conversion to the actual hardware pixel format internally.
+    // Delta = bytes-per-row in the source buffer, accounting for pitch padding.
+    if (sGop) {
+        sGop->Blt(sGop,
+                  reinterpret_cast<EFI_GRAPHICS_OUTPUT_BLT_PIXEL*>(
+                      sTopo.ShadowBuffer),
+                  EfiBltBufferToVideo,
+                  0, start,                            // src  X, Y
+                  0, start,                            // dest X, Y
+                  sTopo.HorizontalResolution,
+                  end - start,
+                  sTopo.PixelsPerScanLine * sizeof(UINT32));
+        sDirtyStart = sTopo.VerticalResolution;
+        sDirtyEnd   = 0;
+        return;
+    }
+    // GOP pointer absent — fall through to direct MMIO as a safety net.
+#endif
 
-    UINT8*       dst = reinterpret_cast<UINT8*>(sTopo.HardwareBaseAddress) + offset;
-    const UINT8* src = reinterpret_cast<const UINT8*>(sTopo.ShadowBuffer)  + offset;
+    // ── Direct MMIO path (AVX2 non-temporal / memcpy) ─────────
+    {
+        UINTN pitch  = sTopo.PixelsPerScanLine;
+        UINTN offset = static_cast<UINTN>(start) * pitch * sizeof(UINT32);
+        UINTN bytes  = static_cast<UINTN>(end - start) * pitch * sizeof(UINT32);
 
-    if (IsAvx2Active()) {
-        BltAvx2(dst, src, bytes);
-    } else {
-        optimized_memcpy(dst, src, bytes);
+        UINT8*       dst = reinterpret_cast<UINT8*>(sTopo.HardwareBaseAddress) + offset;
+        const UINT8* src = reinterpret_cast<const UINT8*>(sTopo.ShadowBuffer)  + offset;
+
+        if (CpuFeatures::IsAvxEnabled() && CpuFeatures::Get().HasAVX2)
+            BltAvx2(dst, src, bytes);
+        else
+            optimized_memcpy(dst, src, bytes);
     }
 
-    // Reset dirty range — engine is clean until next MarkDirty() call
     sDirtyStart = sTopo.VerticalResolution;
     sDirtyEnd   = 0;
 }
@@ -133,10 +149,13 @@ void Reset() {
     sDirtyEnd   = 0;
 }
 
-bool IsAvx2Active() {
-    return sInitialized
-        && CpuFeatures::IsAvxEnabled()
-        && CpuFeatures::Get().HasAVX2;
+RenderMode GetRenderMode() {
+#if VIDEO_BLT
+    return sGop ? RenderMode::GopBlt : RenderMode::Avx2;
+#else
+    return (CpuFeatures::IsAvxEnabled() && CpuFeatures::Get().HasAVX2)
+           ? RenderMode::Avx2 : RenderMode::Memcpy;
+#endif
 }
 
 } // namespace VideoEngine

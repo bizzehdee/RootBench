@@ -21,7 +21,7 @@ public:
     UINT64 GetBudgetUs() const override { return RunConfig::GetTestBudgetUs(); }
     // ns/access = (budgetUs * 1000) / totalAccesses
     UINT64      GetScore() const override {
-        return mTotalAccesses > 0 ? (GetBudgetUs() * 1000ULL) / mTotalAccesses : 0;
+        return mTotalAccesses > 0 ? (ScoreDurationUs() * 1000ULL) / mTotalAccesses : 0;
     }
     const char* GetUnit()  const override { return "ns/access"; }
 

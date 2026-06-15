@@ -17,7 +17,7 @@ public:
 
     UINT64 GetBudgetUs() const override { return RunConfig::GetTestBudgetUs(); }
     // Each iteration processes 8 bytes
-    UINT64      GetScore() const override { return (mTotalIter * 8ULL) / GetBudgetUs(); }
+    UINT64      GetScore() const override { return (mTotalIter * 8ULL) / ScoreDurationUs(); }
     const char* GetUnit()  const override { return "MB/s"; }
 
     void Setup()    override;

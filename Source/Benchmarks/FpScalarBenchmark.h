@@ -17,7 +17,7 @@ public:
 
     UINT64 GetBudgetUs() const override { return RunConfig::GetTestBudgetUs(); }
     // 4 flops per inner iteration (add, mul, div, add)
-    UINT64      GetScore() const override { return (mTotalIter * 4ULL) / GetBudgetUs(); }
+    UINT64      GetScore() const override { return (mTotalIter * 4ULL) / ScoreDurationUs(); }
     const char* GetUnit()  const override { return "MFLOP/s"; }
 
     void PreRun()  override { mTotalIter = 0; }

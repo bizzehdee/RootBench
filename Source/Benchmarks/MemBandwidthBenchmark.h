@@ -20,7 +20,7 @@ public:
     ThreadingMode GetThreadingMode() const override { return ThreadingMode::MultiOnly; }
 
     UINT64 GetBudgetUs() const override { return RunConfig::GetTestBudgetUs(); }
-    UINT64      GetScore() const override { return mTotalBytes / GetBudgetUs(); }
+    UINT64      GetScore() const override { return mTotalBytes / ScoreDurationUs(); }
     const char* GetUnit()  const override { return "MB/s"; }
 
     void Setup()    override { BigBuffer::AddRef(); }
@@ -46,7 +46,7 @@ public:
     ThreadingMode GetThreadingMode() const override { return ThreadingMode::MultiOnly; }
 
     UINT64 GetBudgetUs() const override { return RunConfig::GetTestBudgetUs(); }
-    UINT64      GetScore() const override { return mTotalBytes / GetBudgetUs(); }
+    UINT64      GetScore() const override { return mTotalBytes / ScoreDurationUs(); }
     const char* GetUnit()  const override { return "MB/s"; }
 
     void Setup()    override { BigBuffer::AddRef(); }
@@ -72,7 +72,7 @@ public:
     ThreadingMode GetThreadingMode() const override { return ThreadingMode::MultiOnly; }
 
     UINT64 GetBudgetUs() const override { return RunConfig::GetTestBudgetUs(); }
-    UINT64      GetScore() const override { return mTotalBytes / GetBudgetUs(); }
+    UINT64      GetScore() const override { return mTotalBytes / ScoreDurationUs(); }
     const char* GetUnit()  const override { return "MB/s"; }
 
     void Setup()    override { BigBuffer::AddRef(); }

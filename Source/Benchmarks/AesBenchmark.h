@@ -18,7 +18,7 @@ public:
 
     UINT64 GetBudgetUs() const override { return RunConfig::GetTestBudgetUs(); }
     // Each iteration encrypts 16 bytes (one AES block)
-    UINT64      GetScore() const override { return (mTotalIter * 16ULL) / GetBudgetUs(); }
+    UINT64      GetScore() const override { return (mTotalIter * 16ULL) / ScoreDurationUs(); }
     const char* GetUnit()  const override { return "MB/s"; }
 
     void Setup()    override;

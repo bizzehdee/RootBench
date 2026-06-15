@@ -80,16 +80,13 @@ void HashBenchmark::RunCore(UINT32 /*workerIndex*/, UINT32 /*totalWorkers*/) {
     bool hasSse42 = CpuFeatures::Get().HasSSE42;
     const UINT8* data = mData;
 
-    UINT64 localIter;
     if (hasSse42) {
-        localIter = TimeBox::RunWithProgress(GetBudgetUs(), CHUNK_SIZE,
-            [data](UINT64 n) { RunCrc32Kernel(n, data); },
+        TimeBox::RunWithProgress(GetBudgetUs(), CHUNK_SIZE,
+            [this, data](UINT64 n) { RunCrc32Kernel(n, data); __atomic_fetch_add(const_cast<UINT64*>(&mTotalIter), n, __ATOMIC_RELAXED); },
             [this](UINT64 e, UINT64) { TryReportProgress(e); });
     } else {
-        localIter = TimeBox::RunWithProgress(GetBudgetUs(), CHUNK_SIZE,
-            [data](UINT64 n) { RunFnvKernel(n, data); },
+        TimeBox::RunWithProgress(GetBudgetUs(), CHUNK_SIZE,
+            [this, data](UINT64 n) { RunFnvKernel(n, data); __atomic_fetch_add(const_cast<UINT64*>(&mTotalIter), n, __ATOMIC_RELAXED); },
             [this](UINT64 e, UINT64) { TryReportProgress(e); });
     }
-
-    __atomic_fetch_add(const_cast<UINT64*>(&mTotalIter), localIter, __ATOMIC_RELAXED);
 }

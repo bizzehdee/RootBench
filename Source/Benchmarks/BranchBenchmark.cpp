@@ -38,7 +38,7 @@ void BranchBenchmark::RunCore(UINT32 /*workerIndex*/, UINT32 /*totalWorkers*/) {
 
     UINT8* data = mData;
 
-    UINT64 localIter = TimeBox::RunWithProgress(GetBudgetUs(), CHUNK_SIZE, [data](UINT64 n) {
+    TimeBox::RunWithProgress(GetBudgetUs(), CHUNK_SIZE, [this, data](UINT64 n) {
         UINT64 sum = 0;
         UINTN mask = BUF_BYTES - 1;  // BUF_BYTES is power of 2
         for (UINT64 i = 0; i < n; ++i) {
@@ -48,7 +48,6 @@ void BranchBenchmark::RunCore(UINT32 /*workerIndex*/, UINT32 /*totalWorkers*/) {
         }
         volatile UINT64 sink = sum;
         (void)sink;
+        __atomic_fetch_add(const_cast<UINT64*>(&mTotalIter), n, __ATOMIC_RELAXED);
     }, [this](UINT64 e, UINT64) { TryReportProgress(e); });
-
-    __atomic_fetch_add(const_cast<UINT64*>(&mTotalIter), localIter, __ATOMIC_RELAXED);
 }

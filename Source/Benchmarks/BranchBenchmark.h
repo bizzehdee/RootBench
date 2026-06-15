@@ -17,7 +17,7 @@ public:
     ThreadingMode GetThreadingMode() const override { return ThreadingMode::MultiOnly; }
 
     UINT64 GetBudgetUs() const override { return RunConfig::GetTestBudgetUs(); }
-    UINT64      GetScore() const override { return mTotalIter / GetBudgetUs(); }
+    UINT64      GetScore() const override { return mTotalIter / ScoreDurationUs(); }
     const char* GetUnit()  const override { return "Mbranch/s"; }
 
     void Setup()    override;

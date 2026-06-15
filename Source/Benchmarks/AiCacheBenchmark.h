@@ -22,7 +22,7 @@ public:
     UINT64 GetBudgetUs() const override { return RunConfig::GetTestBudgetUs(); }
     UINT64      GetScore() const override {
         return mTotalAccesses > 0
-               ? mTotalAccesses * 1000 / GetBudgetUs() / AI_REF_CACHE_MACCS
+               ? mTotalAccesses * 1000 / ScoreDurationUs() / AI_REF_CACHE_MACCS
                : 0;
     }
     const char* GetUnit()  const override { return "AI pts"; }

@@ -6,7 +6,7 @@
 #include "TimeBox.h"
 
 void IntLatencyBenchmark::Run() {
-    mTotalIter = TimeBox::RunWithProgress(GetBudgetUs(), CHUNK_SIZE, [](UINT64 n) {
+    TimeBox::RunWithProgress(GetBudgetUs(), CHUNK_SIZE, [this](UINT64 n) {
         UINT64 x = 0x123456789ABCDEF0ULL;
         for (UINT64 i = 0; i < n; ++i) {
             x = x + (x >> 3);    // add — uses result of previous iter
@@ -16,5 +16,6 @@ void IntLatencyBenchmark::Run() {
         }
         volatile UINT64 sink = x;
         (void)sink;
+        __atomic_fetch_add(const_cast<UINT64*>(&mTotalIter), n, __ATOMIC_RELAXED);
     }, [this](UINT64 e, UINT64) { TryReportProgress(e); });
 }

@@ -76,16 +76,13 @@ void FpVectorBenchmark::RunCore(UINT32 /*workerIndex*/, UINT32 /*totalWorkers*/)
 
     if (useAvx) CpuFeatures::EnableAvxState();
 
-    UINT64 localIter;
     if (useAvx) {
-        localIter = TimeBox::RunWithProgress(GetBudgetUs(), CHUNK_SIZE,
-            [](UINT64 n) { RunAvx2Kernel(n); },
+        TimeBox::RunWithProgress(GetBudgetUs(), CHUNK_SIZE,
+            [this](UINT64 n) { RunAvx2Kernel(n); __atomic_fetch_add(const_cast<UINT64*>(&mTotalIter), n, __ATOMIC_RELAXED); },
             [this](UINT64 e, UINT64) { TryReportProgress(e); });
     } else {
-        localIter = TimeBox::RunWithProgress(GetBudgetUs(), CHUNK_SIZE,
-            [](UINT64 n) { RunSse2Fallback(n); },
+        TimeBox::RunWithProgress(GetBudgetUs(), CHUNK_SIZE,
+            [this](UINT64 n) { RunSse2Fallback(n); __atomic_fetch_add(const_cast<UINT64*>(&mTotalIter), n, __ATOMIC_RELAXED); },
             [this](UINT64 e, UINT64) { TryReportProgress(e); });
     }
-
-    __atomic_fetch_add(const_cast<UINT64*>(&mTotalIter), localIter, __ATOMIC_RELAXED);
 }

@@ -55,13 +55,12 @@ void MemLatencyBenchmark::Run() {
     UINT64 chunkSize = N > 1000000ULL ? N / 64ULL : N;
     if (chunkSize < 1024) chunkSize = 1024;
 
-    UINT64 totalAccesses = TimeBox::RunWithProgress(GetBudgetUs(), chunkSize, [&](UINT64 n) {
+    TimeBox::RunWithProgress(GetBudgetUs(), chunkSize, [&](UINT64 n) {
         for (UINT64 i = 0; i < n; ++i)
             ptr = reinterpret_cast<UINT64*>(*ptr);
+        __atomic_fetch_add(const_cast<UINT64*>(&mTotalAccesses), n, __ATOMIC_RELAXED);
     }, [this](UINT64 e, UINT64) { TryReportProgress(e); });
 
     volatile UINT64* sink = reinterpret_cast<volatile UINT64*>(ptr);
     (void)sink;
-
-    mTotalAccesses = totalAccesses;
 }

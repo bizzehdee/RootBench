@@ -21,7 +21,7 @@ public:
 
     UINT64 GetBudgetUs() const override { return RunConfig::GetTestBudgetUs(); }
     UINT64      GetScore() const override {
-        return mTotalOps > 0 ? (mTotalOps / GetBudgetUs()) * 1000 / AI_REF_INT8_MOPS : 0;
+        return mTotalOps > 0 ? (mTotalOps / ScoreDurationUs()) * 1000 / AI_REF_INT8_MOPS : 0;
     }
     const char* GetUnit()  const override { return "AI pts"; }
 

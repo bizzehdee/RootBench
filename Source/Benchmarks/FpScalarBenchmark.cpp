@@ -7,7 +7,7 @@
 #include <emmintrin.h>   // _mm_sqrt_sd (SSE2 baseline)
 
 void FpScalarBenchmark::RunCore(UINT32 /*workerIndex*/, UINT32 /*totalWorkers*/) {
-    UINT64 localIter = TimeBox::RunWithProgress(GetBudgetUs(), CHUNK_SIZE, [](UINT64 n) {
+    TimeBox::RunWithProgress(GetBudgetUs(), CHUNK_SIZE, [this](UINT64 n) {
         double x = 1.234567890123456;
         double y = 0.987654321098765;
         const double c1 = 1.000001;
@@ -24,7 +24,6 @@ void FpScalarBenchmark::RunCore(UINT32 /*workerIndex*/, UINT32 /*totalWorkers*/)
 
         volatile double sink = x + y;
         (void)sink;
+        __atomic_fetch_add(const_cast<UINT64*>(&mTotalIter), n, __ATOMIC_RELAXED);
     }, [this](UINT64 e, UINT64) { TryReportProgress(e); });
-
-    __atomic_fetch_add(const_cast<UINT64*>(&mTotalIter), localIter, __ATOMIC_RELAXED);
 }

@@ -23,7 +23,6 @@ void AiMemBenchmark::RunCore(UINT32 workerIndex, UINT32 totalWorkers) {
     const UINT64 budgetCycles = GetBudgetUs() * cyclesPerUs;
     const UINT64 t0           = Timer::ReadTSC();
 
-    UINT64 totalBytes = 0;
     while ((Timer::ReadTSC() - t0) < budgetCycles) {
         UINT64 a0=0, a1=0, a2=0, a3=0, a4=0, a5=0, a6=0, a7=0;
         for (UINT64 i = 0; i + 8 <= count; i += 8) {
@@ -34,9 +33,7 @@ void AiMemBenchmark::RunCore(UINT32 workerIndex, UINT32 totalWorkers) {
         }
         volatile UINT64 sink = a0^a1^a2^a3^a4^a5^a6^a7;
         (void)sink;
-        totalBytes += size;
+        __atomic_fetch_add(const_cast<UINT64*>(&mTotalBytes), size, __ATOMIC_RELAXED);
         TryReportProgress((Timer::ReadTSC() - t0) / cyclesPerUs);
     }
-
-    __atomic_fetch_add(const_cast<UINT64*>(&mTotalBytes), totalBytes, __ATOMIC_RELAXED);
 }

@@ -48,15 +48,13 @@ void AiCacheBenchmark::Run() {
     UINT64 pL3   = reinterpret_cast<UINT64>(mL3);
     UINT64 pDram = reinterpret_cast<UINT64>(mDram);
 
-    UINT64 totalAccesses = 0;
-
     while ((Timer::ReadTSC() - t0) < budgetCycles) {
         // Chase each chain for kChunk steps — the DRAM chain dominates iteration time.
         for (UINT64 i = 0; i < kChunk; ++i) pL1   = *reinterpret_cast<UINT64*>(pL1);
         for (UINT64 i = 0; i < kChunk; ++i) pL2   = *reinterpret_cast<UINT64*>(pL2);
         for (UINT64 i = 0; i < kChunk; ++i) pL3   = *reinterpret_cast<UINT64*>(pL3);
         for (UINT64 i = 0; i < kChunk; ++i) pDram = *reinterpret_cast<UINT64*>(pDram);
-        totalAccesses += kChunk * 4;
+        mTotalAccesses += kChunk * 4;
 
         TryReportProgress((Timer::ReadTSC() - t0) / cyclesPerUs);
     }
@@ -64,6 +62,4 @@ void AiCacheBenchmark::Run() {
     // Prevent DCE of the pointer chases
     volatile UINT64 sink = pL1 ^ pL2 ^ pL3 ^ pDram;
     (void)sink;
-
-    mTotalAccesses = totalAccesses;
 }

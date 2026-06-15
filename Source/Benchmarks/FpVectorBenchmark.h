@@ -19,7 +19,7 @@ public:
     UINT64 GetBudgetUs() const override { return RunConfig::GetTestBudgetUs(); }
     // 10 accumulators × 4 doubles × 2 flops/FMA = 80 flops per iteration
     // Score in GFLOP/s = flops / budgetUs / 1000
-    UINT64      GetScore() const override { return (mTotalIter * 80ULL) / GetBudgetUs() / 1000ULL; }
+    UINT64      GetScore() const override { return (mTotalIter * 80ULL) / ScoreDurationUs() / 1000ULL; }
     const char* GetUnit()  const override { return "GFLOP/s"; }
 
     void PreRun()  override { mTotalIter = 0; }

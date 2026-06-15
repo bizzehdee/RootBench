@@ -14,16 +14,30 @@ public:
         mProgressFn    = fn;
         mProgressCtx   = ctx;
         mLastRenderTsc = 0;
+        mLastElapsedUs = 0;
     }
 
     // Must be implemented by each subclass to expose its budget duration.
     virtual UINT64 GetBudgetUs() const = 0;
 
 protected:
+    // Divisor for live throughput scores: the elapsed time so far while running,
+    // falling back to the full budget before the first progress tick (and after
+    // the run, where it holds the final elapsed). Lets GetScore() report a true
+    // running rate instead of ramping up against the full budget.
+    UINT64 ScoreDurationUs() const {
+        UINT64 e = mLastElapsedUs;
+        return e ? e : GetBudgetUs();
+    }
+
     // Call from RunCore after each TimeBox chunk.
     // Acquires trylock, enforces 500 ms minimum gap, then invokes the callback.
     void TryReportProgress(UINT64 elapsedUs) {
         if (!mProgressFn) return;
+
+        // Publish latest elapsed for ScoreDurationUs() even when a render is
+        // skipped below (trylock contended or rate-limited).
+        mLastElapsedUs = elapsedUs;
 
         // Trylock: skip if another AP is rendering
         UINT32 expected = 0;
@@ -58,4 +72,5 @@ private:
     void*            mProgressCtx   = nullptr;
     volatile UINT32  mRenderLock    = 0;
     volatile UINT64  mLastRenderTsc = 0;
+    volatile UINT64  mLastElapsedUs = 0;
 };

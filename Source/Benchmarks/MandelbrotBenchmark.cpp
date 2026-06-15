@@ -31,7 +31,7 @@ void MandelbrotBenchmark::RunCore(UINT32 workerIndex, UINT32 totalWorkers) {
     double xMn = X_MIN,   yMn = Y_MIN;
     double dxv = dx,       dyv = dy;
 
-    UINT64 totalPixels = TimeBox::RunWithProgress(GetBudgetUs(), CHUNK_PIXELS, [=](UINT64 n) mutable {
+    TimeBox::RunWithProgress(GetBudgetUs(), CHUNK_PIXELS, [=](UINT64 n) mutable {
         volatile UINT64 iters = 0;
         UINT64 pix = 0;
         for (int row = rS; row < rE && pix < n; ++row) {
@@ -42,7 +42,6 @@ void MandelbrotBenchmark::RunCore(UINT32 workerIndex, UINT32 totalWorkers) {
             }
         }
         (void)iters;
+        __atomic_fetch_add(const_cast<UINT64*>(&mTotalIter), n * MAX_ITER, __ATOMIC_RELAXED);
     }, [this](UINT64 e, UINT64) { TryReportProgress(e); });
-
-    __atomic_fetch_add(const_cast<UINT64*>(&mTotalIter), totalPixels * MAX_ITER, __ATOMIC_RELAXED);
 }

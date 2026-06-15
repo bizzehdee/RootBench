@@ -31,14 +31,15 @@ UINT64 Run(UINT64 budgetUs, UINT64 chunkSize, Kernel&& kernel) {
     return totalIter;
 }
 
-// Like Run, but calls onProgress(elapsedUs, budgetUs) after every chunk.
-// Use this for long benchmarks to drive live progress updates.
+// Like Run, but calls onProgress(elapsedUs, totalIter) after every chunk, where
+// totalIter is the running iteration count so far. Use this for long benchmarks
+// to drive live progress updates and live score accumulation.
 template<typename Kernel, typename ProgressCb>
 UINT64 RunWithProgress(UINT64 budgetUs, UINT64 chunkSize,
                        Kernel&& kernel, ProgressCb&& onProgress) {
     if (!Timer::IsCalibrated() || budgetUs == 0 || chunkSize == 0) {
         kernel(chunkSize);
-        onProgress(0, budgetUs);
+        onProgress(0, chunkSize);
         return chunkSize;
     }
 
@@ -51,7 +52,7 @@ UINT64 RunWithProgress(UINT64 budgetUs, UINT64 chunkSize,
         kernel(chunkSize);
         totalIter += chunkSize;
         UINT64 elapsed = Timer::ReadTSC() - start;
-        onProgress(elapsed / cyclesPerUs, budgetUs);
+        onProgress(elapsed / cyclesPerUs, totalIter);
         if (elapsed >= budgetCycles) break;
     }
 

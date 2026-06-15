@@ -80,9 +80,7 @@ void AesBenchmark::RunCore(UINT32 /*workerIndex*/, UINT32 /*totalWorkers*/) {
 
     const UINT8* rkeys = mRoundKeys;
 
-    UINT64 localIter = TimeBox::RunWithProgress(GetBudgetUs(), CHUNK_SIZE,
-        [rkeys](UINT64 n) { RunAesKernel(n, rkeys); },
+    TimeBox::RunWithProgress(GetBudgetUs(), CHUNK_SIZE,
+        [this, rkeys](UINT64 n) { RunAesKernel(n, rkeys); __atomic_fetch_add(const_cast<UINT64*>(&mTotalIter), n, __ATOMIC_RELAXED); },
         [this](UINT64 e, UINT64) { TryReportProgress(e); });
-
-    __atomic_fetch_add(const_cast<UINT64*>(&mTotalIter), localIter, __ATOMIC_RELAXED);
 }

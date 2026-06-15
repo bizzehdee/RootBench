@@ -19,7 +19,7 @@ public:
 
     UINT64 GetBudgetUs() const override { return RunConfig::GetTestBudgetUs(); }
     // MB/s verified (writes + reads = 2× bytes per pattern × 4 patterns)
-    UINT64      GetScore() const override { return mTotalBytes / GetBudgetUs(); }
+    UINT64      GetScore() const override { return mTotalBytes / ScoreDurationUs(); }
     const char* GetUnit()  const override { return "MB/s"; }
     bool        IncludeInCategoryScore() const override { return false; }
     UINT64      GetErrors() const { return mErrorCount; }

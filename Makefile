@@ -49,6 +49,40 @@ ifneq ($(filter default undefined,$(origin OBJCOPY)),)
   OBJCOPY := $(DEFAULT_OBJCOPY)
 endif
 
+# ── Secure Boot signing ───────────────────────────────────────
+# Signing is ON by default. The .efi is signed with sbsign during the build
+# (zero interaction). On first use, a self-signed key/cert pair is generated
+# automatically in $(KEYDIR) via openssl in batch mode — no prompts.
+#
+#   make                  # build + sign UefiBenchmark.efi (signs in place)
+#   make disk             # build + sign + bootable disk with the signed .efi
+#   make SIGN=0           # opt out: build an unsigned .efi
+#
+# Bring your own keys instead of the auto-generated pair:
+#   make SB_KEY=/path/db.key SB_CERT=/path/db.crt
+#
+# NOTE: signing alone does not make Secure Boot accept the binary — the
+# certificate ($(SB_CERT)) must also be enrolled into the firmware's `db`
+# (or as a MOK via mokutil). See the `enroll-info` target.
+SIGN     ?= 1
+SBSIGN   ?= sbsign
+OPENSSL  ?= openssl
+MOKUTIL  ?= mokutil
+KEYDIR   ?= keys
+SB_KEY   ?= $(KEYDIR)/db.key
+SB_CERT  ?= $(KEYDIR)/db.crt
+SB_DER   ?= $(KEYDIR)/db.der
+SB_CN    ?= UefiBenchmark Secure Boot
+
+# mokutil needs root; use sudo automatically when not already root.
+SUDO := $(shell [ "$$(id -u)" = 0 ] 2>/dev/null || echo sudo)
+
+ifeq ($(SIGN),1)
+  SIGN_DEP := sign
+else
+  SIGN_DEP :=
+endif
+
 # ── Directories ───────────────────────────────────────────────
 SRCDIR   = Source
 INCDIR   = Include
@@ -168,9 +202,9 @@ ISO_TOOL := $(shell if command -v xorriso >/dev/null 2>&1; then echo xorriso; \
                    elif command -v mkisofs >/dev/null 2>&1; then echo mkisofs; fi)
 
 # ── Rules ─────────────────────────────────────────────────────
-.PHONY: all clean disk iso qemu qemusingle help check-toolchain check-iso-tools
+.PHONY: all clean disk iso qemu qemusingle help check-toolchain check-iso-tools sign keys enroll enroll-info enroll-status
 
-all: check-toolchain $(TARGET)
+all: check-toolchain $(TARGET) $(SIGN_DEP)
 
 $(BUILDDIR):
 	mkdir -p $(BUILDDIR)
@@ -222,6 +256,73 @@ $(TARGET): $(OBJECTS)
 	@echo ""
 endif
 
+# ── Secure Boot signing rules ─────────────────────────────────
+$(KEYDIR):
+	mkdir -p $(KEYDIR)
+
+# Generate a self-signed Secure Boot key/cert once, fully non-interactively.
+# -batch + -subj suppress all prompts; -nodes leaves the key unencrypted so
+# sbsign needs no passphrase.
+$(SB_KEY): | $(KEYDIR)
+	@command -v $(OPENSSL) >/dev/null 2>&1 || { echo "Error: openssl not found (needed to generate signing keys)."; exit 1; }
+	$(OPENSSL) req -new -x509 -newkey rsa:2048 -nodes -batch \
+		-subj "/CN=$(SB_CN)/" -days 3650 \
+		-keyout $(SB_KEY) -out $(SB_CERT)
+	@echo "  Generated signing key:  $(SB_KEY)"
+	@echo "  Generated certificate:  $(SB_CERT)"
+
+# The cert is produced alongside the key; this keeps it as a known prereq.
+$(SB_CERT): $(SB_KEY)
+
+keys: $(SB_KEY) $(SB_CERT)
+
+# Sign the built .efi in place with sbsign. Depends on $(TARGET) and the keys,
+# so the binary is always freshly built and the keys exist before signing.
+sign: $(TARGET) $(SB_KEY) $(SB_CERT)
+	@command -v $(SBSIGN) >/dev/null 2>&1 || { echo "Error: sbsign not found."; \
+		echo "Install sbsigntools (Debian/Ubuntu: apt install sbsigntool;"; \
+		echo "Fedora: dnf install sbsigntools; Arch: pacman -S sbsigntools)."; \
+		exit 1; }
+	$(SBSIGN) --key $(SB_KEY) --cert $(SB_CERT) --output $(TARGET) $(TARGET)
+	@echo ""
+	@echo "  Signed: $(TARGET)"
+	@echo "  Cert:   $(SB_CERT)  (must be enrolled in firmware db — see 'make enroll-info')"
+	@echo ""
+
+# mokutil consumes a DER-encoded certificate; our cert is PEM, so convert it.
+$(SB_DER): $(SB_CERT)
+	@command -v $(OPENSSL) >/dev/null 2>&1 || { echo "Error: openssl not found (needed to convert cert to DER)."; exit 1; }
+	$(OPENSSL) x509 -in $(SB_CERT) -outform DER -out $(SB_DER)
+	@echo "  DER certificate:  $(SB_DER)"
+
+# Stage the cert for Secure Boot enrollment via the Machine Owner Key (MOK).
+# This queues the import; MokManager finishes it on the NEXT reboot, where
+# physical-presence confirmation is required by design (unavoidable).
+# --root-pw lets MokManager accept the machine's root password instead of a
+# fresh one-time password, so this invocation needs no interactive prompt.
+enroll: $(SB_DER)
+	@command -v $(MOKUTIL) >/dev/null 2>&1 || { echo "Error: mokutil not found (install the 'mokutil' package)."; exit 1; }
+	$(SUDO) $(MOKUTIL) --import $(SB_DER) --root-pw
+	@echo ""
+	@echo "  Queued $(SB_DER) for MOK enrollment."
+	@echo "  Reboot now; in MokManager choose 'Enroll MOK' and enter the root password."
+	@echo ""
+
+# Show pending/enrolled MOK state.
+enroll-status:
+	@$(MOKUTIL) --list-new 2>/dev/null || true
+	@$(MOKUTIL) --list-enrolled 2>/dev/null || true
+
+enroll-info:
+	@echo "To boot the signed .efi under Secure Boot, enroll $(SB_CERT):"
+	@echo ""
+	@echo "  On real hardware (MOK):  make enroll    # then reboot into MokManager"
+	@echo "  Check status:            make enroll-status"
+	@echo ""
+	@echo "  In QEMU/OVMF: use a Secure-Boot-enabled OVMF_VARS and enroll the"
+	@echo "  cert into 'db' via the firmware setup UI or virt-fw-vars."
+	@echo ""
+
 # ── Per-file ISA overrides ────────────────────────────────────
 # Only these files get the extended ISA flags; all other files remain SSE2-only
 # so that AVX/AES instructions cannot appear before EnableAvxState() is called.
@@ -256,7 +357,7 @@ clean:
 # ── Bootable disk image ──────────────────────────────────────
 # Creates a 64 MB FAT32 image with the .efi at the standard boot path.
 # Requires: mtools (mmd, mcopy), dosfstools (mkfs.fat)
-disk: check-toolchain $(TARGET)
+disk: check-toolchain $(TARGET) $(SIGN_DEP)
 	@echo "Creating FAT32 disk image..."
 	dd if=/dev/zero of=$(DISKIMG) bs=1M count=64 status=none
 	mkfs.fat -F 32 $(DISKIMG) >/dev/null
@@ -269,7 +370,7 @@ check-iso-tools:
 		echo "Install xorriso, genisoimage, or mkisofs to use 'make iso'."; \
 		exit 1; }
 
-$(EFIBOOTIMG): check-toolchain $(TARGET) | $(BUILDDIR)
+$(EFIBOOTIMG): check-toolchain $(TARGET) $(SIGN_DEP) | $(BUILDDIR)
 	@echo "Creating EFI boot image..."
 	dd if=/dev/zero of=$(EFIBOOTIMG) bs=1M count=4 status=none
 	mkfs.fat $(EFIBOOTIMG) >/dev/null
@@ -344,6 +445,12 @@ help:
 	@echo "  make iso          Build + create bootable UEFI ISO image"
 	@echo "  make qemu         Build + boot in QEMU with 4 cores (requires OVMF + mtools)"
 	@echo "  make qemusingle   Build + boot in QEMU with 1 core"
+	@echo "  make SIGN=0       Opt out of Secure Boot signing (signing is on by default)"
+	@echo "  make sign         Sign an already-built .efi in place"
+	@echo "  make keys         Generate the self-signed key/cert pair only"
+	@echo "  make enroll       Import the cert as a MOK (reboot to confirm in MokManager)"
+	@echo "  make enroll-status  Show pending/enrolled MOK certificates"
+	@echo "  make enroll-info  How Secure Boot enrollment works"
 	@echo "  make clean        Remove build artifacts"
 	@echo "  make help         Show this help"
 	@echo ""
@@ -354,6 +461,7 @@ help:
 	@echo "  Objcopy:   $(OBJCOPY)"
 	@echo "  ISO tool:  $(if $(ISO_TOOL),$(ISO_TOOL),not found)"
 	@echo "  OVMF:      $(OVMF)"
+	@echo "  Sign:      $(if $(filter 1,$(SIGN)),enabled (cert: $(SB_CERT)),disabled)"
 	@echo ""
 	@echo "Override toolchain:"
 	@echo "  make CXX=clang++ LD=lld-link OBJCOPY=llvm-objcopy"

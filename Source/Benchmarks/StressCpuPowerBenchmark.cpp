@@ -5,6 +5,18 @@
 #include "StressCpuPowerBenchmark.h"
 #include "CpuFeatures.h"
 #include "TimeBox.h"
+#ifndef __SSE3__
+#  define __SSE3__ 1
+#endif
+#ifndef __AVX__
+#  define __AVX__  1
+#endif
+#ifndef __AVX2__
+#  define __AVX2__ 1
+#endif
+#ifndef __FMA__
+#  define __FMA__  1
+#endif
 #include <immintrin.h>
 
 __attribute__((target("avx2,fma")))

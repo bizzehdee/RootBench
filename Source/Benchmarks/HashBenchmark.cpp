@@ -6,7 +6,10 @@
 #include "CpuFeatures.h"
 #include "TimeBox.h"
 #include "Freestanding.h"
-#include <nmmintrin.h>   // _mm_crc32_u64 (needs -msse4.2)
+#ifndef __SSE4_2__
+#  define __SSE4_2__ 1
+#endif
+#include <nmmintrin.h>   // _mm_crc32_u64
 
 static UINT32 Xorshift32(UINT32 s) {
     s ^= s << 13; s ^= s >> 17; s ^= s << 5; return s;

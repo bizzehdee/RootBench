@@ -6,6 +6,18 @@
 #include "AiInt8Benchmark.h"
 #include "CpuFeatures.h"
 #include "TimeBox.h"
+#ifndef __SSE3__
+#  define __SSE3__  1
+#endif
+#ifndef __SSSE3__
+#  define __SSSE3__ 1
+#endif
+#ifndef __AVX__
+#  define __AVX__  1
+#endif
+#ifndef __AVX2__
+#  define __AVX2__ 1
+#endif
 #include <immintrin.h>
 
 // ── Static slot storage ───────────────────────────────────────

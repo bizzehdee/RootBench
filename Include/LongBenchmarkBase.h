@@ -18,7 +18,7 @@ public:
     }
 
     // Must be implemented by each subclass to expose its budget duration.
-    virtual UINT64 GetBudgetUs() const = 0;
+    virtual UINT64 GetBudgetUs() const override = 0;
 
 protected:
     // Divisor for live throughput scores: the elapsed time so far while running,

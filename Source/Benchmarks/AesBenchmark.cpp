@@ -5,7 +5,10 @@
 #include "AesBenchmark.h"
 #include "CpuFeatures.h"
 #include "TimeBox.h"
-#include <wmmintrin.h>   // _mm_aesenc_si128 etc. (needs -maes)
+#ifndef __AES__
+#  define __AES__ 1
+#endif
+#include <wmmintrin.h>   // _mm_aesenc_si128 etc.
 
 // ── Key expansion helper ──────────────────────────────────────
 
@@ -18,6 +21,7 @@ static __m128i AesKeygenAssist(__m128i key, __m128i assist) {
     return _mm_xor_si128(key, assist);
 }
 
+__attribute__((target("aes")))
 void AesBenchmark::Setup() {
     const auto& feat = CpuFeatures::Get();
     mHasAes = feat.HasAESNI;

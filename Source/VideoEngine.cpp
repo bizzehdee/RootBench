@@ -4,6 +4,18 @@
 #include "VideoEngine.h"
 #include "CpuFeatures.h"
 #include "Freestanding.h"
+// Force the AVX/AVX2 feature macros on before including immintrin.h so that
+// avxintrin.h is not skipped by its #ifndef __AVX__ guard.  These macros
+// only control which declarations the header exposes — they do NOT make the
+// compiler emit AVX2 instructions in ordinary functions.  The BltAvx2 path
+// is runtime-gated by CpuFeatures::HasAVX2 and carries its own
+// __attribute__((target("avx,avx2"))) for actual code-gen.
+#ifndef __AVX__
+#  define __AVX__  1
+#endif
+#ifndef __AVX2__
+#  define __AVX2__ 1
+#endif
 #include <immintrin.h>
 
 namespace VideoEngine {
@@ -19,7 +31,7 @@ static bool                          sInitialized = false;
 // dst must be 32-byte aligned — GOP framebuffers are page-aligned and
 // standard scanline widths (800, 1024, 1920 … ×4 bytes) are multiples
 // of 32, so every row-start is 32-byte aligned in practice.
-__attribute__((target("avx2")))
+__attribute__((target("avx,avx2")))
 static void BltAvx2(UINT8* dst, const UINT8* src, UINTN bytes) {
     // 1. Structural Alignment Guard
     if (reinterpret_cast<UINTN>(dst) & 31u) {

@@ -6,7 +6,19 @@
 #include "FpVectorBenchmark.h"
 #include "CpuFeatures.h"
 #include "TimeBox.h"
-#include <immintrin.h>   // _mm256_fmadd_pd, _mm256_set1_pd (needs -mavx2 -mfma)
+#ifndef __SSE3__
+#  define __SSE3__ 1
+#endif
+#ifndef __AVX__
+#  define __AVX__  1
+#endif
+#ifndef __AVX2__
+#  define __AVX2__ 1
+#endif
+#ifndef __FMA__
+#  define __FMA__  1
+#endif
+#include <immintrin.h>   // _mm256_fmadd_pd, _mm256_set1_pd, _mm_hadd_pd
 
 // ── AVX2/FMA kernel ───────────────────────────────────────────
 

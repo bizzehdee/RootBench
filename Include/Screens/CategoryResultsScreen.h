@@ -17,8 +17,11 @@ public:
     NavResult HandleKey(Tui& tui, EFI_INPUT_KEY key) override;
 
 private:
+    void Build(Tui& tui);   // (re)builds the viewport; honors mShowCalibration
+
     ScrollViewport mVp;
-    char mTitle[80] = {};
-    bool mEmpty     = false;
-    int  mViewRows  = 4;
+    char mTitle[80]      = {};
+    bool mEmpty          = false;
+    bool mShowCalibration = false;  // toggled by the hidden 'C' key (AI only)
+    int  mViewRows       = 4;
 };

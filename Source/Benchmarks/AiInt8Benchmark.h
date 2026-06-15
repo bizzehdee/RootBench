@@ -24,6 +24,8 @@ public:
         return mTotalOps > 0 ? (mTotalOps / ScoreDurationUs()) * 1000 / AI_REF_INT8_MOPS : 0;
     }
     const char* GetUnit()  const override { return "AI pts"; }
+    UINT64      GetRawMetric() const override { return mTotalOps / ScoreDurationUs(); }
+    const char* GetRawUnit()   const override { return "MOPS"; }
 
     void PreRun()  override { mTotalOps = 0; }
     void Run()     override { RunCore(0, 1); }

@@ -28,6 +28,11 @@ void FmtTok(char* out, UINT64 score, UINT32 refX10) {
 }  // namespace
 
 void CategoryResultsScreen::OnEnter(Tui& tui) {
+    mShowCalibration = false;   // hidden by default each visit
+    Build(tui);
+}
+
+void CategoryResultsScreen::Build(Tui& tui) {
     Vector<BenchmarkResult>& results = tui.LastResults();
     const char* category = tui.LastCategory();
     mEmpty = results.Empty() || category == nullptr;
@@ -125,6 +130,32 @@ void CategoryResultsScreen::OnEnter(Tui& tui) {
             AddLlm("7B Q4:",  t7);
             AddLlm("14B Q4:", t14);
             AddLlm("32B Q4:", t32);
+
+            // ── Calibration readout (hidden — toggle with the 'C' key) ────
+            // Raw (pre-normalization) metrics + composite, so a baseline run can
+            // be reported to refine AI_REF_* and the LLM coefficients.
+            if (mShowCalibration) {
+            mVp.AddLine();
+            mVp.AddLine("  -- Calibration (report these to refine estimates) --",
+                        Theme::Current().TextDim);
+            mVp.AddLine(Ui::Concat2("  AI_SCORE_VERSION: ", UintToStr(AI_SCORE_VERSION)),
+                        Theme::Current().TextDim);
+            for (UINTN i = 0; i < results.Size(); ++i) {
+                auto& rr = results[i];
+                if (StrCmp(rr.Category, "AI") != 0 || rr.RawMetric == 0) continue;
+                char ln[ScrollViewport::MAX_WIDTH];
+                for (int k = 0; k < ScrollViewport::MAX_WIDTH - 1; ++k) ln[k] = ' ';
+                ln[ScrollViewport::MAX_WIDTH - 1] = '\0';
+                PadAt(ln,  4, rr.Name,                  22);
+                PadAt(ln, 26, UintToStr(rr.RawMetric),  12);
+                PadAt(ln, 38, rr.RawUnit,                9);
+                PadAt(ln, 48, UintToStr(rr.Score),       8);
+                PadAt(ln, 56, "pts",                     4);
+                mVp.AddLine(ln, Theme::Current().TextDim);
+            }
+            mVp.AddLine(Ui::Concat3("  Composite: ", UintToStr(composite), " AI pts"),
+                        Theme::Current().TextDim);
+            }  // mShowCalibration
         }
     }
 
@@ -165,11 +196,16 @@ void CategoryResultsScreen::Draw(Tui& /*tui*/, int top, int /*bottom*/) {
     mVp.Render(contentStart, mViewRows);
 }
 
-NavResult CategoryResultsScreen::HandleKey(Tui& /*tui*/, EFI_INPUT_KEY key) {
+NavResult CategoryResultsScreen::HandleKey(Tui& tui, EFI_INPUT_KEY key) {
     if (mEmpty) return NavBack();
     if (key.ScanCode == SCAN_ESC) return NavBack();
     if (key.UnicodeChar == '\r' || key.UnicodeChar == '\n')
         return NavPush(ScreenId::Results);
+    if (key.UnicodeChar == 'c' || key.UnicodeChar == 'C') {  // hidden calibration toggle
+        mShowCalibration = !mShowCalibration;
+        Build(tui);
+        return NavStay();
+    }
     mVp.HandleKey(key, mViewRows);
     return NavStay();
 }

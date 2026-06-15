@@ -26,6 +26,8 @@ public:
                : 0;
     }
     const char* GetUnit()  const override { return "AI pts"; }
+    UINT64      GetRawMetric() const override { return mTotalAccesses / ScoreDurationUs(); }
+    const char* GetRawUnit()   const override { return "Macc/us"; }
 
     void Setup()    override;
     void Teardown() override;

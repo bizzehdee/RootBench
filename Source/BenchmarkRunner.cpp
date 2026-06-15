@@ -375,6 +375,8 @@ BenchmarkResult BenchmarkRunner::RunSingle(IBenchmark* benchmark, UINTN runs,
     result.IncludeInScore = benchmark->IncludeInCategoryScore();
     result.CategoryWeight = benchmark->GetCategoryWeight();
     result.BudgetUs       = benchmark->GetBudgetUs();
+    result.RawMetric      = benchmark->GetRawMetric();
+    result.RawUnit        = benchmark->GetRawUnit();
     return result;
 }
 
@@ -416,6 +418,8 @@ BenchmarkResult BenchmarkRunner::RunCoreCycle(IBenchmark* benchmark, UINTN runs,
     result.Category          = benchmark->GetCategory();
     result.Unit              = benchmark->GetUnit();
     result.BudgetUs          = benchmark->GetBudgetUs();
+    result.RawMetric         = benchmark->GetRawMetric();
+    result.RawUnit           = benchmark->GetRawUnit();
     result.MultiCore         = false;
     result.CoreCount         = apCount;
     result.RunModeUsed       = RunMode::CoreCycle;

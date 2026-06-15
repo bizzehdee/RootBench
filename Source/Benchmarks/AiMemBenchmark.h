@@ -24,6 +24,8 @@ public:
         return mTotalBytes > 0 ? (mTotalBytes / ScoreDurationUs()) * 1000 / AI_REF_MEM_MBS : 0;
     }
     const char* GetUnit()  const override { return "AI pts"; }
+    UINT64      GetRawMetric() const override { return mTotalBytes / ScoreDurationUs(); }
+    const char* GetRawUnit()   const override { return "MB/s"; }
 
     void Setup()    override { BigBuffer::AddRef(); }
     void Teardown() override { BigBuffer::Release(); }

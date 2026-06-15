@@ -42,6 +42,11 @@ public:
     // Time-box duration for long benchmarks; 0 for non-time-boxed tests.
     virtual UINT64      GetBudgetUs() const { return 0; }
 
+    // Raw, pre-normalization throughput metric (e.g. MOPS, MB/s) for calibration.
+    // 0 / "" when the benchmark has no raw metric to report.
+    virtual UINT64      GetRawMetric() const { return 0; }
+    virtual const char* GetRawUnit()   const { return ""; }
+
     // Optional live sub-phase label shown during long runs (e.g. which test
     // pattern is currently being verified). Null = nothing extra to show.
     virtual const char* GetStatus() const { return nullptr; }

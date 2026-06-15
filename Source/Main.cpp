@@ -37,6 +37,15 @@
 #include "Benchmarks/StressCpuPowerBenchmark.h"
 #include "Benchmarks/StressCpuVerifyBenchmark.h"
 
+// The TUI controller embeds every screen's scroll viewport (~180 KB total).
+// Keep it in static (.bss) storage rather than on EfiMain's stack: a stack
+// frame that large would overflow the UEFI boot stack (and pull in __chkstk).
+// File scope (not a function-local static) avoids a thread-safe init guard
+// (_Init_thread_header), which this freestanding target does not provide —
+// zero-initialisation yields a valid empty controller (empty Vector + zeroed
+// viewports), matching the original file-scope-static viewports.
+static Tui gTui;
+
 extern "C" EFI_STATUS EFIAPI EfiMain(
     EFI_HANDLE        ImageHandle,
     EFI_SYSTEM_TABLE* SystemTable)
@@ -208,8 +217,7 @@ extern "C" EFI_STATUS EFIAPI EfiMain(
     }
 
     // ── 7. Launch TUI ────────────────────────────────────────
-    Tui tui;
-    tui.Run();
+    gTui.Run();   // file-scope static — see note above
 
     return EFI_SUCCESS;
 }

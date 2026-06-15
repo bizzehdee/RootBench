@@ -88,6 +88,7 @@ SRCDIR   = Source
 INCDIR   = Include
 BUILDDIR = Build
 BMDIR    = $(SRCDIR)/Benchmarks
+SCNDIR   = $(SRCDIR)/Screens
 
 # ── Output ────────────────────────────────────────────────────
 TARGET   = $(BUILDDIR)/UefiBenchmark.efi
@@ -104,6 +105,18 @@ SOURCES  = \
 	$(SRCDIR)/CoreSelection.cpp \
 	$(SRCDIR)/ScrollViewport.cpp \
 	$(SRCDIR)/Tui.cpp \
+	$(SCNDIR)/UiHelpers.cpp \
+	$(SCNDIR)/MainMenuScreen.cpp \
+	$(SCNDIR)/BenchmarkSelectionScreen.cpp \
+	$(SCNDIR)/RunCountPickerScreen.cpp \
+	$(SCNDIR)/ResultsScreen.cpp \
+	$(SCNDIR)/CategoryResultsScreen.cpp \
+	$(SCNDIR)/SystemInfoScreen.cpp \
+	$(SCNDIR)/AiSuitabilityScreen.cpp \
+	$(SCNDIR)/SmbusDebugScreen.cpp \
+	$(SCNDIR)/ResolutionPickerScreen.cpp \
+	$(SCNDIR)/ThemePickerScreen.cpp \
+	$(SCNDIR)/CorePickerScreen.cpp \
 	$(SRCDIR)/CpuFeatures.cpp \
 	$(SRCDIR)/BigBuffer.cpp \
 	$(SRCDIR)/VideoEngine.cpp \
@@ -215,6 +228,10 @@ $(BUILDDIR)/%.o: $(SRCDIR)/%.cpp | $(BUILDDIR)
 
 # Compile .cpp → .o  (Source/Benchmarks/)
 $(BUILDDIR)/%.o: $(BMDIR)/%.cpp | $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+# Compile .cpp → .o  (Source/Screens/)
+$(BUILDDIR)/%.o: $(SCNDIR)/%.cpp | $(BUILDDIR)
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 # Validate the selected toolchain before building.

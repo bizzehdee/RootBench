@@ -13,6 +13,14 @@ extern "C" int _purecall() {
     for (;;) {}
 }
 
+// Clang (MSVC ABI) registers static/global destructors via atexit(). A UEFI
+// application is never torn down by a C runtime, so these destructors would
+// never run anyway — provide a no-op stub that reports success so the
+// registration call links.
+extern "C" int atexit(void (*)(void)) {
+    return 0;
+}
+
 // ── Memory primitives ────────────────────────────────────────
 extern "C" {
 

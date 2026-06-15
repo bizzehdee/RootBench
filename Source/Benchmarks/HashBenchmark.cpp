@@ -82,11 +82,11 @@ void HashBenchmark::RunCore(UINT32 /*workerIndex*/, UINT32 /*totalWorkers*/) {
 
     UINT64 localIter;
     if (hasSse42) {
-        localIter = TimeBox::RunWithProgress(mBudgetUs, CHUNK_SIZE,
+        localIter = TimeBox::RunWithProgress(GetBudgetUs(), CHUNK_SIZE,
             [data](UINT64 n) { RunCrc32Kernel(n, data); },
             [this](UINT64 e, UINT64) { TryReportProgress(e); });
     } else {
-        localIter = TimeBox::RunWithProgress(mBudgetUs, CHUNK_SIZE,
+        localIter = TimeBox::RunWithProgress(GetBudgetUs(), CHUNK_SIZE,
             [data](UINT64 n) { RunFnvKernel(n, data); },
             [this](UINT64 e, UINT64) { TryReportProgress(e); });
     }

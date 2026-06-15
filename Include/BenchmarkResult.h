@@ -14,6 +14,7 @@ struct BenchmarkResult {
     UINT64          Score;
     UINT64          Iterations;
     UINT64          ErrorCount;    // non-zero for integrity test failures
+    UINT64          BudgetUs;      // configured time-box duration for this run
     Vector<UINT64>  RunTimesUs;
     UINT64          TotalTimeUs;
     bool            MultiCore;
@@ -32,7 +33,7 @@ struct BenchmarkResult {
 
     BenchmarkResult()
         : Name(""), Category(""), Unit(""), Score(0),
-          Iterations(0), ErrorCount(0), TotalTimeUs(0),
+          Iterations(0), ErrorCount(0), BudgetUs(0), TotalTimeUs(0),
           MultiCore(false), IncludeInScore(true), CategoryWeight(100), CoreCount(1),
           RunModeUsed(RunMode::SingleCore),
           PerCoreSampleCount(0)

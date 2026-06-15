@@ -3,6 +3,7 @@
 // Multi-core, time-boxed. Score: MFLOP/s.
 
 #include "LongBenchmarkBase.h"
+#include "RunConfig.h"
 
 class FpScalarBenchmark : public LongBenchmarkBase {
 public:
@@ -14,9 +15,9 @@ public:
 
     ThreadingMode GetThreadingMode() const override { return ThreadingMode::MultiOnly; }
 
-    UINT64 GetBudgetUs() const override { return mBudgetUs; }
+    UINT64 GetBudgetUs() const override { return RunConfig::GetTestBudgetUs(); }
     // 4 flops per inner iteration (add, mul, div, add)
-    UINT64      GetScore() const override { return (mTotalIter * 4ULL) / mBudgetUs; }
+    UINT64      GetScore() const override { return (mTotalIter * 4ULL) / GetBudgetUs(); }
     const char* GetUnit()  const override { return "MFLOP/s"; }
 
     void PreRun()  override { mTotalIter = 0; }
@@ -24,7 +25,6 @@ public:
     void RunCore(UINT32 workerIndex, UINT32 totalWorkers) override;
 
 private:
-    static constexpr UINT64 mBudgetUs  = 180ULL * US_PER_SECOND;
     static constexpr UINT64 CHUNK_SIZE = 500000ULL;
     volatile UINT64 mTotalIter = 0;
 };

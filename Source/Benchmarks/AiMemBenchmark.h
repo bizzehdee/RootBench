@@ -4,6 +4,7 @@
 // Multi-core, uses BigBuffer. Score: normalized AI pts (1000 = AMD Ryzen 7 5800X).
 
 #include "LongBenchmarkBase.h"
+#include "RunConfig.h"
 #include "BigBuffer.h"
 #include "AiScore.h"
 
@@ -18,9 +19,9 @@ public:
     ThreadingMode  GetThreadingMode()  const override { return ThreadingMode::MultiOnly; }
     UINT32         GetCategoryWeight() const override { return AI_WEIGHT_MEM; }
 
-    UINT64 GetBudgetUs() const override { return mBudgetUs; }
+    UINT64 GetBudgetUs() const override { return RunConfig::GetTestBudgetUs(); }
     UINT64      GetScore() const override {
-        return mTotalBytes > 0 ? (mTotalBytes / mBudgetUs) * 1000 / AI_REF_MEM_MBS : 0;
+        return mTotalBytes > 0 ? (mTotalBytes / GetBudgetUs()) * 1000 / AI_REF_MEM_MBS : 0;
     }
     const char* GetUnit()  const override { return "AI pts"; }
 
@@ -31,6 +32,5 @@ public:
     void RunCore(UINT32 workerIndex, UINT32 totalWorkers) override;
 
 private:
-    static constexpr UINT64 mBudgetUs = 90ULL * US_PER_SECOND;
     volatile UINT64 mTotalBytes = 0;
 };

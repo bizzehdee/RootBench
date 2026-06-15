@@ -31,7 +31,7 @@ void MandelbrotBenchmark::RunCore(UINT32 workerIndex, UINT32 totalWorkers) {
     double xMn = X_MIN,   yMn = Y_MIN;
     double dxv = dx,       dyv = dy;
 
-    UINT64 totalPixels = TimeBox::RunWithProgress(mBudgetUs, CHUNK_PIXELS, [=](UINT64 n) mutable {
+    UINT64 totalPixels = TimeBox::RunWithProgress(GetBudgetUs(), CHUNK_PIXELS, [=](UINT64 n) mutable {
         volatile UINT64 iters = 0;
         UINT64 pix = 0;
         for (int row = rS; row < rE && pix < n; ++row) {

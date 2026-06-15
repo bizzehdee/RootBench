@@ -4,6 +4,7 @@
 // Multi-core, time-boxed. Score: M-branch/s.
 
 #include "LongBenchmarkBase.h"
+#include "RunConfig.h"
 
 class BranchBenchmark : public LongBenchmarkBase {
 public:
@@ -15,8 +16,8 @@ public:
 
     ThreadingMode GetThreadingMode() const override { return ThreadingMode::MultiOnly; }
 
-    UINT64 GetBudgetUs() const override { return mBudgetUs; }
-    UINT64      GetScore() const override { return mTotalIter / mBudgetUs; }
+    UINT64 GetBudgetUs() const override { return RunConfig::GetTestBudgetUs(); }
+    UINT64      GetScore() const override { return mTotalIter / GetBudgetUs(); }
     const char* GetUnit()  const override { return "Mbranch/s"; }
 
     void Setup()    override;
@@ -26,7 +27,6 @@ public:
     void RunCore(UINT32 workerIndex, UINT32 totalWorkers) override;
 
 private:
-    static constexpr UINT64 mBudgetUs  = 150ULL * US_PER_SECOND;
     static constexpr UINTN  BUF_BYTES  = 64 * BYTES_PER_KB;  // 64 KB — fits in L2
     static constexpr UINT64 CHUNK_SIZE = 1000000ULL;
 

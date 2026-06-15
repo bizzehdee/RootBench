@@ -3,6 +3,7 @@
 // Multi-core, time-boxed. Score: MB/s.
 
 #include "LongBenchmarkBase.h"
+#include "RunConfig.h"
 
 class HashBenchmark : public LongBenchmarkBase {
 public:
@@ -14,9 +15,9 @@ public:
 
     ThreadingMode GetThreadingMode() const override { return ThreadingMode::MultiOnly; }
 
-    UINT64 GetBudgetUs() const override { return mBudgetUs; }
+    UINT64 GetBudgetUs() const override { return RunConfig::GetTestBudgetUs(); }
     // Each iteration processes 8 bytes
-    UINT64      GetScore() const override { return (mTotalIter * 8ULL) / mBudgetUs; }
+    UINT64      GetScore() const override { return (mTotalIter * 8ULL) / GetBudgetUs(); }
     const char* GetUnit()  const override { return "MB/s"; }
 
     void Setup()    override;
@@ -26,7 +27,6 @@ public:
     void RunCore(UINT32 workerIndex, UINT32 totalWorkers) override;
 
 private:
-    static constexpr UINT64 mBudgetUs  = 150ULL * US_PER_SECOND;
     static constexpr UINTN  BUF_BYTES  = 4096;   // 4 KB — stays in L1
     static constexpr UINT64 CHUNK_SIZE = 1000000ULL;
 

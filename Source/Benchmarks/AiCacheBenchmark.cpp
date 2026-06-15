@@ -40,7 +40,7 @@ void AiCacheBenchmark::Run() {
     if (!mL1 || !mL2 || !mL3 || !mDram) return;
 
     const UINT64 cyclesPerUs  = Timer::CyclesPerUs();
-    const UINT64 budgetCycles = mBudgetUs * cyclesPerUs;
+    const UINT64 budgetCycles = GetBudgetUs() * cyclesPerUs;
     const UINT64 t0           = Timer::ReadTSC();
 
     UINT64 pL1   = reinterpret_cast<UINT64>(mL1);

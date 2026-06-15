@@ -12,6 +12,10 @@ namespace Ui {
 const char* Concat2(const char* a, const char* b);
 const char* Concat3(const char* a, const char* b, const char* c);
 
+// Format a microsecond duration as "<N> min" (adds " (HhMMm)" when >= 1 hour).
+// Uses its own static buffer (independent of Concat*), valid until the next call.
+const char* DurationStr(UINT64 us);
+
 // A single selectable menu row, optionally with a checkbox. Highlighted rows
 // draw with the theme highlight background.
 void DrawMenuItem(int row, const char* text, bool highlighted,

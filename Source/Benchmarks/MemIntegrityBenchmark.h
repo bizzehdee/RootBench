@@ -4,6 +4,7 @@
 // Multi-core. Score: MB/s verified; ErrorCount contains mismatches.
 
 #include "LongBenchmarkBase.h"
+#include "RunConfig.h"
 #include "BigBuffer.h"
 
 class MemIntegrityBenchmark : public LongBenchmarkBase {
@@ -16,9 +17,9 @@ public:
 
     ThreadingMode GetThreadingMode() const override { return ThreadingMode::MultiOnly; }
 
-    UINT64 GetBudgetUs() const override { return mBudgetUs; }
+    UINT64 GetBudgetUs() const override { return RunConfig::GetTestBudgetUs(); }
     // MB/s verified (writes + reads = 2× bytes per pattern × 4 patterns)
-    UINT64      GetScore() const override { return mTotalBytes / mBudgetUs; }
+    UINT64      GetScore() const override { return mTotalBytes / GetBudgetUs(); }
     const char* GetUnit()  const override { return "MB/s"; }
     bool        IncludeInCategoryScore() const override { return false; }
     UINT64      GetErrors() const { return mErrorCount; }
@@ -30,7 +31,6 @@ public:
     void RunCore(UINT32 workerIndex, UINT32 totalWorkers) override;
 
 private:
-    static constexpr UINT64 mBudgetUs = 300ULL * US_PER_SECOND; // 5 min — thorough
 
     volatile UINT64 mTotalBytes = 0;
     volatile UINT64 mErrorCount = 0;

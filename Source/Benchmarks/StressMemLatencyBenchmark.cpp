@@ -17,7 +17,7 @@ void StressMemLatencyBenchmark::RunCore(UINT32 /*workerIndex*/, UINT32 /*totalWo
 
     const UINT64 startTsc  = Timer::ReadTSC();
     const UINT64 cycPerUs  = Timer::IsCalibrated() ? Timer::CyclesPerUs() : 1;
-    const UINT64 budgetTsc = mBudgetUs * cycPerUs;
+    const UINT64 budgetTsc = GetBudgetUs() * cycPerUs;
 
     UINT64 localErrors = 0;
 

@@ -9,6 +9,7 @@
 #include "SystemInfo.h"
 #include "Freestanding.h"
 #include "BenchmarkConstants.h"
+#include "Screens/UiHelpers.h"
 
 // ── AP dispatch contexts ─────────────────────────────────────
 
@@ -206,6 +207,17 @@ static void DrawLiveProgress(const ProgressReport& r, void* vctx) {
         Renderer::DrawText(cols - p - 2, 5, tb, Theme::Current().TextDim);
     }
 
+    // Configured duration on row 6
+    if (r.BudgetUs > 0) {
+        static char db[48];
+        int p = 0;
+        db[p++] = ' '; db[p++] = ' ';
+        p = ProgAppend(db, p, "Duration: ");
+        p = ProgAppend(db, p, Ui::DurationStr(r.BudgetUs));
+        db[p] = '\0';
+        Renderer::DrawText(0, 6, db, Theme::Current().TextDim);
+    }
+
     // Score on row 7
     {
         static char sb[80];
@@ -362,6 +374,7 @@ BenchmarkResult BenchmarkRunner::RunSingle(IBenchmark* benchmark, UINTN runs,
     result.Unit          = benchmark->GetUnit();
     result.IncludeInScore = benchmark->IncludeInCategoryScore();
     result.CategoryWeight = benchmark->GetCategoryWeight();
+    result.BudgetUs       = benchmark->GetBudgetUs();
     return result;
 }
 
@@ -402,6 +415,7 @@ BenchmarkResult BenchmarkRunner::RunCoreCycle(IBenchmark* benchmark, UINTN runs,
     result.Name              = benchmark->GetName();
     result.Category          = benchmark->GetCategory();
     result.Unit              = benchmark->GetUnit();
+    result.BudgetUs          = benchmark->GetBudgetUs();
     result.MultiCore         = false;
     result.CoreCount         = apCount;
     result.RunModeUsed       = RunMode::CoreCycle;

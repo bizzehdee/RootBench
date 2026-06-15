@@ -38,7 +38,7 @@ void BranchBenchmark::RunCore(UINT32 /*workerIndex*/, UINT32 /*totalWorkers*/) {
 
     UINT8* data = mData;
 
-    UINT64 localIter = TimeBox::RunWithProgress(mBudgetUs, CHUNK_SIZE, [data](UINT64 n) {
+    UINT64 localIter = TimeBox::RunWithProgress(GetBudgetUs(), CHUNK_SIZE, [data](UINT64 n) {
         UINT64 sum = 0;
         UINTN mask = BUF_BYTES - 1;  // BUF_BYTES is power of 2
         for (UINT64 i = 0; i < n; ++i) {

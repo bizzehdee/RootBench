@@ -3,6 +3,7 @@
 // Multi-core, time-boxed. Score: Miter/s.
 
 #include "LongBenchmarkBase.h"
+#include "RunConfig.h"
 
 class MandelbrotBenchmark : public LongBenchmarkBase {
 public:
@@ -14,8 +15,8 @@ public:
 
     ThreadingMode GetThreadingMode() const override { return ThreadingMode::MultiOnly; }
 
-    UINT64 GetBudgetUs() const override { return mBudgetUs; }
-    UINT64      GetScore() const override { return mTotalIter / mBudgetUs; }
+    UINT64 GetBudgetUs() const override { return RunConfig::GetTestBudgetUs(); }
+    UINT64      GetScore() const override { return mTotalIter / GetBudgetUs(); }
     const char* GetUnit()  const override { return "Miter/s"; }
 
     void PreRun()  override { mTotalIter = 0; }
@@ -23,7 +24,6 @@ public:
     void RunCore(UINT32 workerIndex, UINT32 totalWorkers) override;
 
 private:
-    static constexpr UINT64 mBudgetUs   = 180ULL * US_PER_SECOND;
     static constexpr UINT64 CHUNK_PIXELS = 4096;  // pixels per chunk call
     static constexpr int    GRID_W = 512, GRID_H = 512; // fixed grid
     static constexpr int    MAX_ITER = 256;

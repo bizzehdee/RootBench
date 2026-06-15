@@ -6,7 +6,7 @@
 #include "TimeBox.h"
 
 void IntLatencyBenchmark::Run() {
-    mTotalIter = TimeBox::RunWithProgress(mBudgetUs, CHUNK_SIZE, [](UINT64 n) {
+    mTotalIter = TimeBox::RunWithProgress(GetBudgetUs(), CHUNK_SIZE, [](UINT64 n) {
         UINT64 x = 0x123456789ABCDEF0ULL;
         for (UINT64 i = 0; i < n; ++i) {
             x = x + (x >> 3);    // add — uses result of previous iter

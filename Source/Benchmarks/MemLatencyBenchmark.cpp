@@ -55,7 +55,7 @@ void MemLatencyBenchmark::Run() {
     UINT64 chunkSize = N > 1000000ULL ? N / 64ULL : N;
     if (chunkSize < 1024) chunkSize = 1024;
 
-    UINT64 totalAccesses = TimeBox::RunWithProgress(mBudgetUs, chunkSize, [&](UINT64 n) {
+    UINT64 totalAccesses = TimeBox::RunWithProgress(GetBudgetUs(), chunkSize, [&](UINT64 n) {
         for (UINT64 i = 0; i < n; ++i)
             ptr = reinterpret_cast<UINT64*>(*ptr);
     }, [this](UINT64 e, UINT64) { TryReportProgress(e); });

@@ -20,7 +20,7 @@ void AiMemBenchmark::RunCore(UINT32 workerIndex, UINT32 totalWorkers) {
     // Read through the partition repeatedly; accumulate bytes read.
     // Use 8 accumulators to hide load latency across loop iterations.
     const UINT64 cyclesPerUs  = Timer::CyclesPerUs();
-    const UINT64 budgetCycles = mBudgetUs * cyclesPerUs;
+    const UINT64 budgetCycles = GetBudgetUs() * cyclesPerUs;
     const UINT64 t0           = Timer::ReadTSC();
 
     UINT64 totalBytes = 0;

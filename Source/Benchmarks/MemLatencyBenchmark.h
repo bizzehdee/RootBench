@@ -5,6 +5,7 @@
 // Single-core. Score: ns/access.
 
 #include "LongBenchmarkBase.h"
+#include "RunConfig.h"
 #include "BigBuffer.h"
 
 class MemLatencyBenchmark : public LongBenchmarkBase {
@@ -17,10 +18,10 @@ public:
 
     ThreadingMode GetThreadingMode() const override { return ThreadingMode::SingleOnly; }
 
-    UINT64 GetBudgetUs() const override { return mBudgetUs; }
+    UINT64 GetBudgetUs() const override { return RunConfig::GetTestBudgetUs(); }
     // ns/access = (budgetUs * 1000) / totalAccesses
     UINT64      GetScore() const override {
-        return mTotalAccesses > 0 ? (mBudgetUs * 1000ULL) / mTotalAccesses : 0;
+        return mTotalAccesses > 0 ? (GetBudgetUs() * 1000ULL) / mTotalAccesses : 0;
     }
     const char* GetUnit()  const override { return "ns/access"; }
 
@@ -30,7 +31,6 @@ public:
     void Run()      override;
 
 private:
-    static constexpr UINT64 mBudgetUs = 120ULL * US_PER_SECOND;
 
     UINT64* mStartPtr    = nullptr;
     UINT64  mSlotCount   = 0;

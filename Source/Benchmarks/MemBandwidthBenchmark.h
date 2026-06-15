@@ -4,6 +4,7 @@
 // Multi-core, multi-pass. Score: MB/s.
 
 #include "LongBenchmarkBase.h"
+#include "RunConfig.h"
 #include "BigBuffer.h"
 
 // ── Write bandwidth (non-temporal stores) ─────────────────────
@@ -18,8 +19,8 @@ public:
 
     ThreadingMode GetThreadingMode() const override { return ThreadingMode::MultiOnly; }
 
-    UINT64 GetBudgetUs() const override { return mBudgetUs; }
-    UINT64      GetScore() const override { return mTotalBytes / mBudgetUs; }
+    UINT64 GetBudgetUs() const override { return RunConfig::GetTestBudgetUs(); }
+    UINT64      GetScore() const override { return mTotalBytes / GetBudgetUs(); }
     const char* GetUnit()  const override { return "MB/s"; }
 
     void Setup()    override { BigBuffer::AddRef(); }
@@ -29,7 +30,6 @@ public:
     void RunCore(UINT32 workerIndex, UINT32 totalWorkers) override;
 
 private:
-    static constexpr UINT64 mBudgetUs = 180ULL * US_PER_SECOND;
     volatile UINT64 mTotalBytes = 0;
 };
 
@@ -45,8 +45,8 @@ public:
 
     ThreadingMode GetThreadingMode() const override { return ThreadingMode::MultiOnly; }
 
-    UINT64 GetBudgetUs() const override { return mBudgetUs; }
-    UINT64      GetScore() const override { return mTotalBytes / mBudgetUs; }
+    UINT64 GetBudgetUs() const override { return RunConfig::GetTestBudgetUs(); }
+    UINT64      GetScore() const override { return mTotalBytes / GetBudgetUs(); }
     const char* GetUnit()  const override { return "MB/s"; }
 
     void Setup()    override { BigBuffer::AddRef(); }
@@ -56,7 +56,6 @@ public:
     void RunCore(UINT32 workerIndex, UINT32 totalWorkers) override;
 
 private:
-    static constexpr UINT64 mBudgetUs = 180ULL * US_PER_SECOND;
     volatile UINT64 mTotalBytes = 0;
 };
 
@@ -72,8 +71,8 @@ public:
 
     ThreadingMode GetThreadingMode() const override { return ThreadingMode::MultiOnly; }
 
-    UINT64 GetBudgetUs() const override { return mBudgetUs; }
-    UINT64      GetScore() const override { return mTotalBytes / mBudgetUs; }
+    UINT64 GetBudgetUs() const override { return RunConfig::GetTestBudgetUs(); }
+    UINT64      GetScore() const override { return mTotalBytes / GetBudgetUs(); }
     const char* GetUnit()  const override { return "MB/s"; }
 
     void Setup()    override { BigBuffer::AddRef(); }
@@ -83,6 +82,5 @@ public:
     void RunCore(UINT32 workerIndex, UINT32 totalWorkers) override;
 
 private:
-    static constexpr UINT64 mBudgetUs = 180ULL * US_PER_SECOND;
     volatile UINT64 mTotalBytes = 0;
 };

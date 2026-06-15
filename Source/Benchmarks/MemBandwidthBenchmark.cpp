@@ -32,7 +32,7 @@ void MemSeqWriteBenchmark::RunCore(UINT32 workerIndex, UINT32 totalWorkers) {
     _mm_sfence();
 
     // Timed passes — accumulate bytes inside lambda so GetScore() shows live data
-    TimeBox::RunWithProgress(mBudgetUs, 1, [&](UINT64) {
+    TimeBox::RunWithProgress(GetBudgetUs(), 1, [&](UINT64) {
         for (UINT32 s = 0; s < nSpans; ++s) {
             UINT8* base = spans[s].Base;
             UINT64 size = spans[s].Size & ~static_cast<UINT64>(15);
@@ -58,7 +58,7 @@ void MemSeqReadBenchmark::RunCore(UINT32 workerIndex, UINT32 totalWorkers) {
     UINT32 nSpans = buf->GetSpans(start, end, spans, MAX_SPANS);
     const UINT64 chunkBytes = end - start;
 
-    TimeBox::RunWithProgress(mBudgetUs, 1, [&](UINT64) {
+    TimeBox::RunWithProgress(GetBudgetUs(), 1, [&](UINT64) {
         __m128i acc = _mm_setzero_si128();
         for (UINT32 s = 0; s < nSpans; ++s) {
             UINT8* base = spans[s].Base;
@@ -90,7 +90,7 @@ void MemCopyBenchmark::RunCore(UINT32 workerIndex, UINT32 totalWorkers) {
     UINT32 nSrc = buf->GetSpans(start,            start + halfSize, srcSpans, MAX_SPANS);
     UINT32 nDst = buf->GetSpans(start + halfSize, start + halfSize * 2, dstSpans, MAX_SPANS);
 
-    TimeBox::RunWithProgress(mBudgetUs, 1, [&](UINT64) {
+    TimeBox::RunWithProgress(GetBudgetUs(), 1, [&](UINT64) {
         UINT32 si = 0, di = 0;
         UINT64 sOff = 0, dOff = 0;
 

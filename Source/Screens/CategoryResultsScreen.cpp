@@ -129,6 +129,15 @@ void CategoryResultsScreen::OnEnter(Tui& tui) {
     }
 
     mVp.AddLine();
+
+    // Configured time-box duration used for this category.
+    UINT64 budget = 0;
+    for (UINTN i = 0; i < results.Size(); ++i)
+        if (StrCmp(results[i].Category, category) == 0) { budget = results[i].BudgetUs; break; }
+    if (budget)
+        mVp.AddLine(Ui::Concat2("  Duration per test: ", Ui::DurationStr(budget)),
+                    Theme::Current().TextDim);
+
     UINT64 totalUs = 0;
     for (UINTN i = 0; i < results.Size(); ++i) totalUs += results[i].TotalTimeUs;
     mVp.AddLine(Ui::Concat3("  Total suite time: ", UintToStr(totalUs / 1000), " ms"),

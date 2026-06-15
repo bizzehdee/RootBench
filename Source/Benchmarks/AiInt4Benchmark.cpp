@@ -87,14 +87,14 @@ void AiInt4Benchmark::RunCore(UINT32 workerIndex, UINT32 /*totalWorkers*/) {
 
     UINT64 localIter;
     if (useAvx2) {
-        localIter = TimeBox::RunWithProgress(mBudgetUs, CHUNK_SIZE,
+        localIter = TimeBox::RunWithProgress(GetBudgetUs(), CHUNK_SIZE,
             [pA, BT, C, up](UINT64 n) {
                 for (UINT64 k = 0; k < n; ++k)
                     GemmInt4_Avx2(pA, BT, C, up, kN, kPackedN);
             },
             [this](UINT64 e, UINT64) { TryReportProgress(e); });
     } else {
-        localIter = TimeBox::RunWithProgress(mBudgetUs, CHUNK_SIZE,
+        localIter = TimeBox::RunWithProgress(GetBudgetUs(), CHUNK_SIZE,
             [pA, BT, C, up](UINT64 n) {
                 for (UINT64 k = 0; k < n; ++k)
                     GemmInt4_Scalar(pA, BT, C, up, kN, kPackedN);

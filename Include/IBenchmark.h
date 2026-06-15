@@ -39,6 +39,9 @@ public:
     virtual UINT64      GetScore() const { return 0; }
     virtual const char* GetUnit()  const { return ""; }
 
+    // Time-box duration for long benchmarks; 0 for non-time-boxed tests.
+    virtual UINT64      GetBudgetUs() const { return 0; }
+
     // Optional live sub-phase label shown during long runs (e.g. which test
     // pattern is currently being verified). Null = nothing extra to show.
     virtual const char* GetStatus() const { return nullptr; }

@@ -28,6 +28,27 @@ const char* Concat3(const char* a, const char* b, const char* c) {
     return sBuf;
 }
 
+const char* DurationStr(UINT64 us) {
+    static char buf[48];
+    UINT64 mins = us / 60000000ULL;   // us → minutes
+    int p = 0;
+    const char* ns = UintToStr(mins);
+    for (int i = 0; ns[i]; ++i) buf[p++] = ns[i];
+    for (const char* s = " min"; *s; ++s) buf[p++] = *s;
+    if (mins >= 60) {
+        buf[p++] = ' '; buf[p++] = '(';
+        const char* hs = UintToStr(mins / 60);
+        for (int i = 0; hs[i]; ++i) buf[p++] = hs[i];
+        buf[p++] = 'h';
+        UINT64 mm = mins % 60;
+        buf[p++] = (char)('0' + mm / 10);
+        buf[p++] = (char)('0' + mm % 10);
+        buf[p++] = 'm'; buf[p++] = ')';
+    }
+    buf[p] = '\0';
+    return buf;
+}
+
 void DrawMenuItem(int row, const char* text, bool highlighted,
                   bool showCheckbox, bool isChecked) {
     char line[128];

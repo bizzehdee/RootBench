@@ -148,6 +148,23 @@ void ResultsScreen::OnEnter(Tui& tui) {
 
     // Trailing summary lines.
     mVp.AddSeparator();
+
+    // Configured time-box duration(s) that were used (test vs stress).
+    UINT64 testBudget = 0, stressBudget = 0;
+    for (UINTN i = 0; i < results.Size(); ++i) {
+        if (StrCmp(results[i].Category, "Stress") == 0) {
+            if (!stressBudget) stressBudget = results[i].BudgetUs;
+        } else if (!testBudget) {
+            testBudget = results[i].BudgetUs;
+        }
+    }
+    if (testBudget)
+        mVp.AddLine(Ui::Concat2("  Test duration:   ", Ui::DurationStr(testBudget)),
+                    Theme::Current().TextDim);
+    if (stressBudget)
+        mVp.AddLine(Ui::Concat2("  Stress duration: ", Ui::DurationStr(stressBudget)),
+                    Theme::Current().TextDim);
+
     UINT64 totalTime = 0;
     for (UINTN i = 0; i < results.Size(); ++i) totalTime += results[i].TotalTimeUs;
     mVp.AddLine(Ui::Concat3("  Total suite time: ", UintToStr(totalTime / 1000), " ms"),

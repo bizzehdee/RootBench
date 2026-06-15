@@ -7,6 +7,7 @@
 
 #include "LongBenchmarkBase.h"
 #include "BenchmarkConstants.h"
+#include "RunConfig.h"
 
 class StressCpuVerifyBenchmark : public LongBenchmarkBase {
 public:
@@ -19,7 +20,7 @@ public:
     ThreadingMode GetThreadingMode()       const override { return ThreadingMode::MultiOnly; }
     bool          IncludeInCategoryScore() const override { return false; }
 
-    UINT64 GetBudgetUs() const override { return mBudgetUs; }
+    UINT64 GetBudgetUs() const override { return RunConfig::GetStressBudgetUs(); }
     UINT64      GetScore() const override { return mErrorCount; }
     const char* GetUnit()  const override { return "Errors"; }
     UINT64      GetErrors() const { return mErrorCount; }
@@ -34,7 +35,6 @@ public:
     void RunCore(UINT32 workerIndex, UINT32 totalWorkers) override;
 
 private:
-    static constexpr UINT64 mBudgetUs    = 1800ULL * US_PER_SECOND; // 30 min
     static constexpr UINT64 CHAIN_LENGTH = 1000000ULL;             // 1M LCG steps per check
 
     // Distinct seed patterns (see BenchmarkConstants.h) exercise different

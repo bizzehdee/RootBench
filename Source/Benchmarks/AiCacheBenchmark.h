@@ -5,6 +5,7 @@
 // Single-core. Score: normalized AI pts (1000 = AMD Ryzen 7 5800X).
 
 #include "LongBenchmarkBase.h"
+#include "RunConfig.h"
 #include "AiScore.h"
 
 class AiCacheBenchmark : public LongBenchmarkBase {
@@ -18,10 +19,10 @@ public:
     ThreadingMode  GetThreadingMode()  const override { return ThreadingMode::SingleOnly; }
     UINT32         GetCategoryWeight() const override { return AI_WEIGHT_CACHE; }
 
-    UINT64 GetBudgetUs() const override { return mBudgetUs; }
+    UINT64 GetBudgetUs() const override { return RunConfig::GetTestBudgetUs(); }
     UINT64      GetScore() const override {
         return mTotalAccesses > 0
-               ? mTotalAccesses * 1000 / mBudgetUs / AI_REF_CACHE_MACCS
+               ? mTotalAccesses * 1000 / GetBudgetUs() / AI_REF_CACHE_MACCS
                : 0;
     }
     const char* GetUnit()  const override { return "AI pts"; }
@@ -32,7 +33,6 @@ public:
     void Run()      override;
 
 private:
-    static constexpr UINT64 mBudgetUs = 90ULL * US_PER_SECOND;
     static constexpr UINT64 kChunk    = 4096ULL; // accesses per chain per iteration
 
     // Working-set sizes (slots of sizeof(UINT64) = 8 bytes)

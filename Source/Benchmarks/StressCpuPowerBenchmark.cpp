@@ -65,11 +65,11 @@ void StressCpuPowerBenchmark::RunCore(UINT32 /*workerIndex*/, UINT32 /*totalWork
 
     UINT64 localIter;
     if (useAvx) {
-        localIter = TimeBox::RunWithProgress(mBudgetUs, CHUNK_SIZE,
+        localIter = TimeBox::RunWithProgress(GetBudgetUs(), CHUNK_SIZE,
             [](UINT64 n) { RunAvx2Kernel(n); },
             [this](UINT64 e, UINT64) { TryReportProgress(e); });
     } else {
-        localIter = TimeBox::RunWithProgress(mBudgetUs, CHUNK_SIZE,
+        localIter = TimeBox::RunWithProgress(GetBudgetUs(), CHUNK_SIZE,
             [](UINT64 n) { RunSse2Fallback(n); },
             [this](UINT64 e, UINT64) { TryReportProgress(e); });
     }

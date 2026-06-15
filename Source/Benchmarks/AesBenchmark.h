@@ -4,6 +4,7 @@
 // Multi-core, time-boxed. Score: MB/s.
 
 #include "LongBenchmarkBase.h"
+#include "RunConfig.h"
 
 class AesBenchmark : public LongBenchmarkBase {
 public:
@@ -15,9 +16,9 @@ public:
 
     ThreadingMode GetThreadingMode() const override { return ThreadingMode::MultiOnly; }
 
-    UINT64 GetBudgetUs() const override { return mBudgetUs; }
+    UINT64 GetBudgetUs() const override { return RunConfig::GetTestBudgetUs(); }
     // Each iteration encrypts 16 bytes (one AES block)
-    UINT64      GetScore() const override { return (mTotalIter * 16ULL) / mBudgetUs; }
+    UINT64      GetScore() const override { return (mTotalIter * 16ULL) / GetBudgetUs(); }
     const char* GetUnit()  const override { return "MB/s"; }
 
     void Setup()    override;
@@ -26,7 +27,6 @@ public:
     void RunCore(UINT32 workerIndex, UINT32 totalWorkers) override;
 
 private:
-    static constexpr UINT64 mBudgetUs  = 180ULL * US_PER_SECOND;
     static constexpr UINT64 CHUNK_SIZE = 1000000ULL;
 
     // AES-128 key schedule (11 round keys × 16 bytes each)

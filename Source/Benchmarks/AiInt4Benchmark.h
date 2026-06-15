@@ -5,6 +5,7 @@
 // Score: normalized AI pts (1000 = AMD Ryzen 7 5800X).
 
 #include "LongBenchmarkBase.h"
+#include "RunConfig.h"
 #include "AiScore.h"
 
 class AiInt4Benchmark : public LongBenchmarkBase {
@@ -18,9 +19,9 @@ public:
     ThreadingMode  GetThreadingMode()  const override { return ThreadingMode::Either; }
     UINT32         GetCategoryWeight() const override { return AI_WEIGHT_INT4; }
 
-    UINT64 GetBudgetUs() const override { return mBudgetUs; }
+    UINT64 GetBudgetUs() const override { return RunConfig::GetTestBudgetUs(); }
     UINT64      GetScore() const override {
-        return mTotalOps > 0 ? (mTotalOps / mBudgetUs) * 1000 / AI_REF_INT4_MOPS : 0;
+        return mTotalOps > 0 ? (mTotalOps / GetBudgetUs()) * 1000 / AI_REF_INT4_MOPS : 0;
     }
     const char* GetUnit()  const override { return "AI pts"; }
 
@@ -33,7 +34,6 @@ public:
     static constexpr int MAX_WORKERS = 32;
 
 private:
-    static constexpr UINT64 mBudgetUs  = 90ULL * US_PER_SECOND;
     static constexpr UINT64 CHUNK_SIZE = 50ULL;
 
     // A stored packed: 2 int4 values per byte, low nibble first

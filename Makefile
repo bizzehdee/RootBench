@@ -114,6 +114,7 @@ SOURCES  = \
 	$(SRCDIR)/CoreSelection.cpp \
 	$(SRCDIR)/ScrollViewport.cpp \
 	$(SRCDIR)/SelfCheck.cpp \
+	$(SRCDIR)/RunConfig.cpp \
 	$(SRCDIR)/Tui.cpp \
 	$(SCNDIR)/UiHelpers.cpp \
 	$(SCNDIR)/MainMenuScreen.cpp \

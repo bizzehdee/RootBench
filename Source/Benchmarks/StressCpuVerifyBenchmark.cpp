@@ -23,7 +23,7 @@ void StressCpuVerifyBenchmark::Setup() {
 void StressCpuVerifyBenchmark::RunCore(UINT32 /*workerIndex*/, UINT32 /*totalWorkers*/) {
     const UINT64 startTsc  = Timer::ReadTSC();
     const UINT64 cycPerUs  = Timer::IsCalibrated() ? Timer::CyclesPerUs() : 1;
-    const UINT64 budgetTsc = mBudgetUs * cycPerUs;
+    const UINT64 budgetTsc = GetBudgetUs() * cycPerUs;
 
     UINT64 localErrors = 0;
     UINT32 idx         = 0;  // per-core round-robin cursor over PATTERNS

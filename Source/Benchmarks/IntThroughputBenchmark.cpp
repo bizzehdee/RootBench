@@ -10,7 +10,7 @@ void IntThroughputBenchmark::RunCore(UINT32 /*workerIndex*/, UINT32 /*totalWorke
     // compiler cannot merge them into a single dependency chain.
     constexpr UINT64 M = LCG_KNUTH_A;
 
-    UINT64 localIter = TimeBox::RunWithProgress(mBudgetUs, CHUNK_SIZE, [](UINT64 n) {
+    UINT64 localIter = TimeBox::RunWithProgress(GetBudgetUs(), CHUNK_SIZE, [](UINT64 n) {
         UINT64 a0 = 1ULL, a1 = 2ULL, a2 = 3ULL, a3 = 4ULL;
         UINT64 a4 = 5ULL, a5 = 6ULL, a6 = 7ULL, a7 = 8ULL;
 

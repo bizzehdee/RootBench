@@ -38,7 +38,7 @@ void Tui::DrawFooter(const char* text) {
     int cols = static_cast<int>(Renderer::Columns());
     Ui::DrawSeparator(rows - 3);
     Renderer::DrawTextBg(0, rows - 2,
-        Renderer::Pad("(c) 2026 Darren Horrocks | https://github.com/bizzehdee/UefiBenchmark | MIT License", cols),
+        Renderer::Pad("(c) 2026 Darren Horrocks | https://github.com/bizzehdee/RootBench | MIT License", cols),
         Theme::Current().TextDim, Theme::Current().Background);
     Renderer::DrawTextBg(0, rows - 1, Renderer::Pad(text, cols),
                          Theme::Current().Footer, Theme::Current().Background);

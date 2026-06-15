@@ -253,7 +253,7 @@ static void DrawLiveProgress(const ProgressReport& r, void* vctx) {
 
     // Footer (matches Tui::DrawFooter layout)
     Renderer::FillRow(rows - 3, Theme::Current().Separator);
-    const char* copy = "(c) 2026 Darren Horrocks | https://github.com/bizzehdee/UefiBenchmark | MIT License";
+    const char* copy = "(c) 2026 Darren Horrocks | https://github.com/bizzehdee/RootBench | MIT License";
     Renderer::DrawTextBg(0, rows - 2, Renderer::Pad(copy, cols), Theme::Current().Footer, Theme::Current().Background);
     Renderer::DrawTextBg(0, rows - 1, Renderer::Pad("", cols), Theme::Current().TextDim, Theme::Current().Background);
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Post-build self-check provisioning for UefiBenchmark.
+# Post-build self-check provisioning for RootBench.
 #
 # Computes CRC-32 over the in-memory image of the PE .text section and writes it
 # into the SelfCheckBlob (located by its 16-byte magic) so the app can verify at

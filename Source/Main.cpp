@@ -64,7 +64,7 @@ extern "C" EFI_STATUS EFIAPI EfiMain(
         gST->ConIn->Reset(gST->ConIn, FALSE);
 
     // ── 2. Early text output ─────────────────────────────────
-    ConPrintLine("UEFI Benchmark Suite - Initialising...");
+    ConPrintLine("RootBench - Initialising...");
 
     // ── 2a. Validate the loaded image ────────────────────────
     // Sentinels + .text CRC32 (vs the value embedded by tools/patch_selfcrc.py).
@@ -86,7 +86,7 @@ extern "C" EFI_STATUS EFIAPI EfiMain(
 
     if (gopOk) {
         Renderer::Clear();
-        Renderer::DrawText(2, 1, "UEFI Benchmark Suite", Theme::Current().Accent);
+        Renderer::DrawText(2, 1, "RootBench", Theme::Current().Accent);
         Renderer::DrawText(2, 3, "Calibrating timer...", Theme::Current().TextDim);
         Renderer::Present();
     } else {

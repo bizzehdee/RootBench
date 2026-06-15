@@ -1,0 +1,83 @@
+## @file RootBench.inf
+## EDK II module definition for RootBench.
+## Build within an EDK II workspace:
+##   1. Copy this project into your workspace (e.g. RootBenchPkg/)
+##   2. Add RootBenchPkg/RootBench.inf to your platform .dsc
+##   3. build -p RootBenchPkg/RootBench.dsc -a X64
+
+[Defines]
+  INF_VERSION    = 0x00010005
+  BASE_NAME      = RootBench
+  FILE_GUID      = A3B7C9D1-E2F4-4A6B-8C0E-1D3F5A7B9C2E
+  MODULE_TYPE    = UEFI_APPLICATION
+  VERSION_STRING = 1.0
+  ENTRY_POINT    = EfiMain
+
+[Sources]
+  Source/Freestanding.cpp
+  Source/Timer.cpp
+  Source/SystemInfo.cpp
+  Source/BitmapFont.cpp
+  Source/Renderer.cpp
+  Source/BenchmarkRegistry.cpp
+  Source/BenchmarkRunner.cpp
+  Source/CoreSelection.cpp
+  Source/ScrollViewport.cpp
+  Source/SelfCheck.cpp
+  Source/RunConfig.cpp
+  Source/Tui.cpp
+  Source/Screens/UiHelpers.cpp
+  Source/Screens/MainMenuScreen.cpp
+  Source/Screens/BenchmarkSelectionScreen.cpp
+  Source/Screens/RunCountPickerScreen.cpp
+  Source/Screens/ResultsScreen.cpp
+  Source/Screens/CategoryResultsScreen.cpp
+  Source/Screens/SystemInfoScreen.cpp
+  Source/Screens/AiSuitabilityScreen.cpp
+  Source/Screens/SmbusDebugScreen.cpp
+  Source/Screens/ResolutionPickerScreen.cpp
+  Source/Screens/ThemePickerScreen.cpp
+  Source/Screens/CorePickerScreen.cpp
+  Source/CpuFeatures.cpp
+  Source/BigBuffer.cpp
+  Source/VideoEngine.cpp
+  Source/Benchmarks/IntThroughputBenchmark.cpp
+  Source/Benchmarks/IntLatencyBenchmark.cpp
+  Source/Benchmarks/FpScalarBenchmark.cpp
+  Source/Benchmarks/FpVectorBenchmark.cpp
+  Source/Benchmarks/BranchBenchmark.cpp
+  Source/Benchmarks/AesBenchmark.cpp
+  Source/Benchmarks/HashBenchmark.cpp
+  Source/Benchmarks/MandelbrotBenchmark.cpp
+  Source/Benchmarks/MemBandwidthBenchmark.cpp
+  Source/Benchmarks/MemLatencyBenchmark.cpp
+  Source/Benchmarks/MemIntegrityBenchmark.cpp
+  Source/Benchmarks/AiInt8Benchmark.cpp
+  Source/Benchmarks/AiInt4Benchmark.cpp
+  Source/Benchmarks/AiMemBenchmark.cpp
+  Source/Benchmarks/AiCacheBenchmark.cpp
+  Source/Benchmarks/StressMemClockBenchmark.cpp
+  Source/Benchmarks/StressMemLatencyBenchmark.cpp
+  Source/Benchmarks/StressCpuPowerBenchmark.cpp
+  Source/Benchmarks/StressCpuVerifyBenchmark.cpp
+  Source/Main.cpp
+
+[Packages]
+  MdePkg/MdePkg.dec
+
+[LibraryClasses]
+  UefiApplicationEntryPoint
+  UefiLib
+  UefiBootServicesTableLib
+
+[Protocols]
+  gEfiGraphicsOutputProtocolGuid
+  gEfiSimpleTextInProtocolGuid
+  gEfiMpServiceProtocolGuid
+
+[BuildOptions]
+  GCC:*_*_X64_CC_FLAGS   = -std=c++17 -fno-exceptions -fno-rtti -fno-stack-protector -IInclude -ISource
+  MSFT:*_*_X64_CC_FLAGS  = /std:c++17 /GR- /EHsc- /IInclude /ISource
+  # Per-file ISA flags for SIMD/crypto benchmarks (EDK II does not support per-file flags
+  # directly; use the global flags here for EDK II builds, but restrict them in Makefile builds)
+  GCC:*_*_X64_CC_FLAGS   = -mavx2 -mfma -maes -msse4.2

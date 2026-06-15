@@ -1,4 +1,4 @@
-# UEFI Benchmark Suite
+# RootBench
 
 A bare-metal benchmark and stability-testing tool that runs **directly on your hardware with no operating system**. It boots from UEFI firmware, talks to the CPU and memory with nothing in the way — no OS scheduler, no background services, no driver overhead — and reports clean, repeatable numbers for CPU, memory, AI-inference readiness, and overclock stability.
 
@@ -18,8 +18,8 @@ Download the latest release — you get two files:
 
 | File | Use it for |
 |------|-----------|
-| `UefiBenchmark.efi` | USB stick, Ventoy, or VM (the raw UEFI application) |
-| `UefiBenchmark.iso` | Bootable disc image for Ventoy, VMs, or burning |
+| `RootBench.efi` | USB stick, Ventoy, or VM (the raw UEFI application) |
+| `RootBench.iso` | Bootable disc image for Ventoy, VMs, or burning |
 
 > The released files are **unsigned**, so you must **disable Secure Boot** in your firmware before booting them. If you want to keep Secure Boot enabled, see [Building & Signing Your Own](#building--signing-your-own).
 
@@ -33,7 +33,7 @@ Pick whichever method suits you.
 2. Copy the application to this exact path on the drive (the location UEFI auto-boots):
 
    ```
-   <USB>/EFI/BOOT/BOOTX64.EFI      ← this is UefiBenchmark.efi, renamed
+   <USB>/EFI/BOOT/BOOTX64.EFI      ← this is RootBench.efi, renamed
    ```
 
 3. Reboot and open the firmware boot menu (usually **F12 / F11 / Esc / Del** during POST).
@@ -45,13 +45,13 @@ Pick whichever method suits you.
 
 1. Install Ventoy onto your USB drive (one-time).
 2. Copy **either** file onto the Ventoy partition:
-   - `UefiBenchmark.iso` — appears directly in the Ventoy boot menu, **or**
-   - `UefiBenchmark.efi` — Ventoy can chainload `.efi` files directly.
+   - `RootBench.iso` — appears directly in the Ventoy boot menu, **or**
+   - `RootBench.efi` — Ventoy can chainload `.efi` files directly.
 3. Boot the stick, pick the entry from Ventoy's menu.
 
 #### Virtual machine
 
-Attach `UefiBenchmark.iso` to any **UEFI-capable** VM (VirtualBox, VMware, Hyper-V, QEMU) and boot from it. Note: VM results are not representative of bare-metal performance — use VMs for trying out the interface, not for real numbers.
+Attach `RootBench.iso` to any **UEFI-capable** VM (VirtualBox, VMware, Hyper-V, QEMU) and boot from it. Note: VM results are not representative of bare-metal performance — use VMs for trying out the interface, not for real numbers.
 
 ### 3. Don't forget
 
@@ -241,7 +241,7 @@ sudo apt update
 sudo apt install clang lld llvm make \
                  mtools dosfstools ovmf qemu-system-x86 xorriso \
                  sbsigntool openssl mokutil
-make            # builds and signs UefiBenchmark.efi (a key is auto-generated on first run)
+make            # builds and signs RootBench.efi (a key is auto-generated on first run)
 make iso        # bootable signed ISO
 make qemu       # try it in QEMU
 ```
@@ -348,6 +348,6 @@ void MyBenchmark::RunCore(UINT32 workerIndex, UINT32 totalWorkers) {
 
 1. Instantiate it and call `BenchmarkRegistry::Register(&myBench)` in `Source/Main.cpp` (next to the other registrations).
 2. Add the `.cpp` to `SOURCES` in the `Makefile`.
-3. Add it to `[Sources]` in `UefiBenchmark.inf`.
+3. Add it to `[Sources]` in `RootBench.inf`.
 
 The new test (and its category, if new) appears automatically in the menus. Two hard rules: code in `RunCore` runs on application processors and must be **pure computation — no UEFI calls** — and the static registry holds a maximum of **32 benchmarks**.

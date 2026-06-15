@@ -38,6 +38,6 @@ jobs:
           token: ${{ secrets.RELEASE_PAT }}
           tag_name: ${{ github.ref_name }}
           files: |
-            Build/UefiBenchmark.efi
-            Build/UefiBenchmark.iso
+            Build/RootBench.efi
+            Build/RootBench.iso
           generate_release_notes: false

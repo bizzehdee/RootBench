@@ -1,12 +1,12 @@
-# ── UefiBenchmark Makefile ────────────────────────────────────
-# Builds the UEFI benchmark tool as a PE32+ .efi application.
+# ── RootBench Makefile ────────────────────────────────────────
+# Builds the RootBench UEFI benchmark tool as a PE32+ .efi application.
 #
 # Supported hosts:
 #   - Linux with LLVM/LLD (native host toolchain)
 #   - Windows with MSYS2/MinGW64
 #
 # Usage:
-#   make              # auto-detects platform, builds UefiBenchmark.efi
+#   make              # auto-detects platform, builds RootBench.efi
 #   make disk         # build + create bootable FAT32 disk image
 #   make qemu         # build + boot in QEMU (requires OVMF + mtools)
 #   make clean        # remove build artifacts
@@ -28,7 +28,7 @@ ifeq ($(OS),Windows_NT)
   DEFAULT_LD := ld
   DEFAULT_OBJCOPY := objcopy
   CXX_TARGET_FLAGS :=
-  LINK_OUTPUT = $(BUILDDIR)/UefiBenchmark.dll
+  LINK_OUTPUT = $(BUILDDIR)/RootBench.dll
 else
   PLATFORM := linux
   DEFAULT_CXX := clang++
@@ -54,7 +54,7 @@ endif
 # (zero interaction). On first use, a self-signed key/cert pair is generated
 # automatically in $(KEYDIR) via openssl in batch mode — no prompts.
 #
-#   make                  # build + sign UefiBenchmark.efi (signs in place)
+#   make                  # build + sign RootBench.efi (signs in place)
 #   make disk             # build + sign + bootable disk with the signed .efi
 #   make SIGN=0           # opt out: build an unsigned .efi
 #
@@ -81,7 +81,7 @@ KEYDIR   ?= keys
 SB_KEY   ?= $(KEYDIR)/db.key
 SB_CERT  ?= $(KEYDIR)/db.crt
 SB_DER   ?= $(KEYDIR)/db.der
-SB_CN    ?= UefiBenchmark Secure Boot
+SB_CN    ?= RootBench Secure Boot
 
 # mokutil needs root; use sudo automatically when not already root.
 SUDO := $(shell [ "$$(id -u)" = 0 ] 2>/dev/null || echo sudo)
@@ -100,7 +100,7 @@ BMDIR    = $(SRCDIR)/Benchmarks
 SCNDIR   = $(SRCDIR)/Screens
 
 # ── Output ────────────────────────────────────────────────────
-TARGET   = $(BUILDDIR)/UefiBenchmark.efi
+TARGET   = $(BUILDDIR)/RootBench.efi
 
 # ── Sources ───────────────────────────────────────────────────
 SOURCES  = \
@@ -218,7 +218,7 @@ endif
 
 DISKIMG  = $(BUILDDIR)/disk.img
 EFIBOOTIMG = $(BUILDDIR)/efiboot.img
-ISOIMG   = $(BUILDDIR)/UefiBenchmark.iso
+ISOIMG   = $(BUILDDIR)/RootBench.iso
 ISOROOT  = $(BUILDDIR)/iso-root
 
 ISO_TOOL := $(shell if command -v xorriso >/dev/null 2>&1; then echo xorriso; \
@@ -429,7 +429,7 @@ $(ISOIMG): $(EFIBOOTIMG)
 ifeq ($(ISO_TOOL),xorriso)
 	xorriso -as mkisofs \
 		-R -J \
-		-V UEFIBENCH \
+		-V ROOTBENCH \
 		-eltorito-alt-boot \
 		-e efiboot.img \
 		-no-emul-boot \
@@ -438,7 +438,7 @@ ifeq ($(ISO_TOOL),xorriso)
 else
 	$(ISO_TOOL) \
 		-R -J \
-		-V UEFIBENCH \
+		-V ROOTBENCH \
 		-eltorito-alt-boot \
 		-e efiboot.img \
 		-no-emul-boot \
@@ -476,9 +476,9 @@ qemusingle: disk
 
 # ── Help ──────────────────────────────────────────────────────
 help:
-	@echo "UefiBenchmark build targets:"
+	@echo "RootBench build targets:"
 	@echo ""
-	@echo "  make              Build UefiBenchmark.efi"
+	@echo "  make              Build RootBench.efi"
 	@echo "  make disk         Build + create bootable FAT32 disk image"
 	@echo "  make iso          Build + create bootable UEFI ISO image"
 	@echo "  make qemu         Build + boot in QEMU with 4 cores (requires OVMF + mtools)"

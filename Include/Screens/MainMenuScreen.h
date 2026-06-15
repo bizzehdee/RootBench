@@ -5,7 +5,7 @@
 // actions (select, results, system info, pickers, shutdown).
 class MainMenuScreen : public Screen {
 public:
-    const char* Title()  const override { return "UEFI BENCHMARK SUITE"; }
+    const char* Title()  const override { return "ROOTBENCH"; }
     const char* Footer() const override { return "[Up/Down] Navigate  [Enter] Select"; }
 
     // No OnEnter: the cursor persists across visits to submenus, matching the

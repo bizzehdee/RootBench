@@ -16,13 +16,13 @@ static constexpr UINT32 AI_SCORE_VERSION = 2;
 
 // ── Reference values (raw metric / µs on the 5950X baseline) ──
 // INT8 GEMM (N=32, multi-core):     raw = mTotalOps / mBudgetUs  (ops/µs = MOPS)
-static constexpr UINT64 AI_REF_INT8_MOPS   = 22110;   // measured (Zen3 AVX2 maddubs path)
+static constexpr UINT64 AI_REF_INT8_MOPS   = 565969;   // measured (Zen3 AVX2 maddubs path)
 // INT4 GEMM (packed N=32, multi-core): raw = mTotalOps / mBudgetUs
-static constexpr UINT64 AI_REF_INT4_MOPS   = 18305;   // measured
+static constexpr UINT64 AI_REF_INT4_MOPS   = 194939;   // measured
 // Sequential read bandwidth (multi-core): raw = mTotalBytes / mBudgetUs (MB/s)
 static constexpr UINT64 AI_REF_MEM_MBS     = 54241;   // measured (DDR4-3766 dual-channel)
 // Pointer-chase aggregate (4 working sets, single-core): raw = mTotalAccesses / mBudgetUs
-static constexpr UINT64 AI_REF_CACHE_MACCS = 97;      // measured (Macc/µs mixed L1/L2/L3/DRAM)
+static constexpr UINT64 AI_REF_CACHE_MACCS = 113;      // measured (Macc/µs mixed L1/L2/L3/DRAM)
 
 // ── Sub-test weights (must sum to 100) ───────────────────────
 static constexpr UINT32 AI_WEIGHT_INT8  = 35;

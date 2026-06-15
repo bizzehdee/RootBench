@@ -145,7 +145,7 @@ static void DrawLiveProgress(const ProgressReport& r, void* vctx) {
             p = ProgAppend(mb, p, UintToStr(pc->CoreCount));
             p = ProgAppend(mb, p, " APs)");
         } else {
-            p = ProgAppend(mb, p, "Single-core (BSP)");
+            p = ProgAppend(mb, p, "Single-core (1 AP)");
         }
         mb[p] = '\0';
         Renderer::DrawText(cols - p - 2, 3, mb, Theme::Current().TextDim);
@@ -352,8 +352,40 @@ BenchmarkResult BenchmarkRunner::RunSingle(IBenchmark* benchmark, UINTN runs,
 
             result.RunTimesUs.PushBack(elapsed);
         } else {
+            // Single-core: run on a randomly chosen available AP (never the BSP)
+            // so the measured core isn't perturbed by the BSP's firmware/SMI
+            // handling, and so the same physical core isn't always used. Falls
+            // back to the BSP when MP Services or APs are unavailable.
+            UINTN apProc  = 0;
+            bool  haveAp  = false;
+            if (mp && CoreSelection::Count() > 0) {
+                CoreSelection::ApInfo* roster = CoreSelection::GetAll();
+                UINT32 total = CoreSelection::Count();
+                UINTN  avail[CoreSelection::MAX_APS];
+                UINT32 navail = 0;
+                for (UINT32 i = 0; i < total; ++i)
+                    if (roster[i].Available) avail[navail++] = roster[i].ProcIndex;
+                if (navail > 0) {
+                    UINT32 pick = static_cast<UINT32>(Timer::ReadTSC() % navail);
+                    apProc = avail[pick];
+                    haveAp = true;
+                }
+            }
+
+            ApSingleContext apCtx;
+            apCtx.Benchmark = benchmark;
+
             Timer::Start();
-            benchmark->Run();
+            bool ranOnAp = false;
+            if (haveAp) {
+                EFI_STATUS st = mp->StartupThisAP(mp, ApSingleProc, apProc,
+                                                  NULL, 0, &apCtx, NULL);
+                ranOnAp = !EFI_ERROR(st);
+            }
+            if (!ranOnAp) {
+                Timer::Start();
+                benchmark->Run();   // fallback: BSP
+            }
             UINT64 elapsed = Timer::ElapsedUs();
             result.RunTimesUs.PushBack(elapsed);
         }

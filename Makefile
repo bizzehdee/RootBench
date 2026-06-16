@@ -51,15 +51,18 @@ endif
 
 # ── Secure Boot signing ───────────────────────────────────────
 # Signing is ON by default. The .efi is signed with sbsign during the build
-# (zero interaction). On first use, a self-signed key/cert pair is generated
-# automatically in $(KEYDIR) via openssl in batch mode — no prompts.
+# (zero interaction). Keys live in secureboot/ and are generated on first use.
 #
-#   make                  # build + sign RootBench.efi (signs in place)
-#   make disk             # build + sign + bootable disk with the signed .efi
-#   make SIGN=0           # opt out: build an unsigned .efi
+#   make                    # build + sign RootBench.efi (signs in place)
+#   make disk               # build + sign + bootable disk with the signed .efi
+#   make SIGN=0             # opt out: build an unsigned .efi
 #
-# Bring your own keys instead of the auto-generated pair:
-#   make SB_KEY=/path/db.key SB_CERT=/path/db.crt
+# Override with explicit key files:
+#   make SB_KEY=/path/to.key SB_CERT=/path/to.crt
+#
+# Override with base64-encoded key/cert (for CI — e.g. GitHub Actions secrets):
+#   make SB_KEY_B64="$(cat key.pem | base64 -w0)" SB_CERT_B64="$(cat cert.crt | base64 -w0)"
+#   or set them as environment variables / Actions secrets and pass via env.
 #
 # NOTE: signing alone does not make Secure Boot accept the binary — the
 # certificate ($(SB_CERT)) must also be enrolled into the firmware's `db`
@@ -77,60 +80,26 @@ SELFCRC  ?= 1
 PYTHON   ?= python3
 SELFCRC_TOOL := tools/patch_selfcrc.py
 MOKUTIL  ?= mokutil
-KEYDIR   ?= keys
-SB_DER   ?= $(KEYDIR)/db.der
-SB_CN    ?= RootBench Secure Boot
+SB_KEYDIR ?= secureboot
+SB_KEY    ?= $(SB_KEYDIR)/RootBench.key
+SB_CERT   ?= $(SB_KEYDIR)/RootBench.crt
+SB_DER    ?= $(SB_KEYDIR)/RootBench.der
+SB_CN     ?= RootBench Secure Boot
+
+# Base64-encoded key/cert for CI (GitHub Actions secrets or similar).
+# When set, these are decoded into $(SB_KEY)/$(SB_CERT) before signing so the
+# same persistent key is reused across CI runs without committing key files.
+SB_KEY_B64  ?=
+SB_CERT_B64 ?=
 
 # mokutil needs root; use sudo automatically when not already root.
 SUDO := $(shell [ "$$(id -u)" = 0 ] 2>/dev/null || echo sudo)
 
-# ── Reuse an already-enrolled Machine Owner Key (MOK) ────────
-# To avoid generating + enrolling a second key just for RootBench, auto-detect a
-# MOK that is already enrolled on this machine and sign with it. Debian/Ubuntu
-# (shim/DKMS) and Fedora (akmods) standard locations are checked, in that order.
-# An explicit SB_KEY=... always wins over detection; USE_MOK=0 disables it.
-# sbsign needs a PEM certificate, so the MOK's DER cert is converted once into
-# $(KEYDIR)/mok.pem. The MOK private key is normally root-only, so the signing
-# step escalates via sudo when the current user cannot read it.
-USE_MOK ?= 1
-
-MOK_DEB_KEY  := /var/lib/shim-signed/mok/MOK.priv
-MOK_DEB_CERT := /var/lib/shim-signed/mok/MOK.der
-MOK_FED_KEY  := /etc/pki/akmods/private/private_key.priv
-MOK_FED_CERT := /etc/pki/akmods/certs/public_key.der
-
-# Detect only when the user has not explicitly chosen a signing key.
-ifeq ($(filter command line environment,$(origin SB_KEY)),)
-ifeq ($(USE_MOK),1)
-  # Detect off the certificate: it is the artifact we must convert, and it is
-  # usually more readable than the private key (whose directory is often
-  # root-only). The key is read at sign time, escalating via sudo if needed.
-  ifneq ($(wildcard $(MOK_DEB_CERT)),)
-    MOK_KEY      := $(MOK_DEB_KEY)
-    MOK_CERT_DER := $(MOK_DEB_CERT)
-    MOK_SOURCE   := Debian/Ubuntu shim MOK
-  else ifneq ($(wildcard $(MOK_FED_CERT)),)
-    MOK_KEY      := $(MOK_FED_KEY)
-    MOK_CERT_DER := $(MOK_FED_CERT)
-    MOK_SOURCE   := Fedora akmods MOK
-  endif
-endif
-endif
-
-ifdef MOK_KEY
-  # Sign with the already-enrolled MOK; convert its DER cert to PEM for sbsign.
-  SB_KEY    ?= $(MOK_KEY)
-  SB_CERT   ?= $(KEYDIR)/mok.pem
-  # Escalate signing only if the (usually root-only) private key isn't readable.
-  SIGN_SUDO := $(shell test -r $(MOK_KEY) 2>/dev/null || echo $(SUDO))
-  # The private key lives in a root-only dir we may not be able to stat, so it
-  # must NOT be a make prerequisite — sbsign reads it directly (under sudo).
-  SIGN_KEY_DEP := $(SB_CERT)
+ifneq ($(SB_KEY_B64),)
+  # B64 keys supplied (CI path): decode-keys target writes them before signing.
+  SIGN_KEY_DEP := decode-keys
 else
-  # No enrolled MOK found: fall back to a self-signed pair generated in $(KEYDIR).
-  SB_KEY    ?= $(KEYDIR)/db.key
-  SB_CERT   ?= $(KEYDIR)/db.crt
-  SIGN_SUDO :=
+  # Local path: use secureboot/RootBench.* (generated on first use if absent).
   SIGN_KEY_DEP := $(SB_KEY) $(SB_CERT)
 endif
 
@@ -286,7 +255,7 @@ ISO_TOOL := $(shell if command -v xorriso >/dev/null 2>&1; then echo xorriso; \
                    elif command -v mkisofs >/dev/null 2>&1; then echo mkisofs; fi)
 
 # ── Rules ─────────────────────────────────────────────────────
-.PHONY: all clean disk iso qemu qemusingle install help check-toolchain check-iso-tools check-sign-tools sign keys enroll enroll-info enroll-status
+.PHONY: all clean disk iso qemu qemusingle install help check-toolchain check-iso-tools check-sign-tools sign keys decode-keys enroll enroll-info enroll-status
 
 all: check-toolchain $(SIGN_PRECHECK) $(TARGET) $(SIGN_DEP)
 
@@ -355,22 +324,13 @@ $(TARGET): $(OBJECTS)
 endif
 
 # ── Secure Boot signing rules ─────────────────────────────────
-$(KEYDIR):
-	mkdir -p $(KEYDIR)
+$(SB_KEYDIR):
+	mkdir -p $(SB_KEYDIR)
 
-ifdef MOK_KEY
-# Reusing an enrolled MOK: its private key already exists; we only need to
-# convert the MOK's DER certificate to the PEM form sbsign expects.
-$(SB_CERT): $(MOK_CERT_DER) | $(KEYDIR)
-	@command -v $(OPENSSL) >/dev/null 2>&1 || { echo "Error: openssl not found (needed to convert the MOK cert)."; exit 1; }
-	$(OPENSSL) x509 -inform DER -in $(MOK_CERT_DER) -outform PEM -out $(SB_CERT)
-	@echo "  Reusing enrolled MOK ($(MOK_SOURCE)): $(MOK_KEY)"
-	@echo "  Converted MOK cert -> $(SB_CERT)"
-else
 # Generate a self-signed Secure Boot key/cert once, fully non-interactively.
 # -batch + -subj suppress all prompts; -nodes leaves the key unencrypted so
 # sbsign needs no passphrase.
-$(SB_KEY): | $(KEYDIR)
+$(SB_KEY): | $(SB_KEYDIR)
 	@command -v $(OPENSSL) >/dev/null 2>&1 || { echo "Error: openssl not found (needed to generate signing keys)."; exit 1; }
 	$(OPENSSL) req -new -x509 -newkey rsa:2048 -nodes -batch \
 		-subj "/CN=$(SB_CN)/" -days 3650 \
@@ -380,7 +340,21 @@ $(SB_KEY): | $(KEYDIR)
 
 # The cert is produced alongside the key; this keeps it as a known prereq.
 $(SB_CERT): $(SB_KEY)
-endif
+
+# Decode base64-encoded key/cert into secureboot/ (CI path).
+# Pass SB_KEY_B64 and SB_CERT_B64 as env vars or make variables — e.g. from
+# GitHub Actions secrets — to reuse the same persistent key across CI runs.
+decode-keys: | $(SB_KEYDIR)
+	@test -n "$(SB_KEY_B64)" || { echo "Error: SB_KEY_B64 is not set."; exit 1; }
+	@printf '%s' "$(SB_KEY_B64)" | base64 -d > $(SB_KEY)
+	@chmod 600 $(SB_KEY)
+	@echo "  Decoded signing key:  $(SB_KEY)"
+	@if [ -n "$(SB_CERT_B64)" ]; then \
+		printf '%s' "$(SB_CERT_B64)" | base64 -d > $(SB_CERT); \
+		echo "  Decoded certificate:  $(SB_CERT)"; \
+	else \
+		echo "  Using existing certificate: $(SB_CERT)"; \
+	fi
 
 keys: $(SIGN_KEY_DEP)
 
@@ -391,16 +365,11 @@ sign: $(TARGET) $(SIGN_KEY_DEP)
 		echo "Install sbsigntools (Debian/Ubuntu: apt install sbsigntool;"; \
 		echo "Fedora: dnf install sbsigntools; Arch: pacman -S sbsigntools)."; \
 		exit 1; }
-ifdef MOK_KEY
-	@echo "  Signing with already-enrolled MOK ($(MOK_SOURCE)): $(MOK_KEY)"
-else
-	@echo "  No enrolled MOK detected; signing with self-signed key: $(SB_KEY)"
-	@echo "  (enroll it with 'make enroll', or reuse a MOK via SB_KEY=.../SB_CERT=...)"
-endif
-	$(SIGN_SUDO) $(SBSIGN) --key $(SB_KEY) --cert $(SB_CERT) --output $(TARGET) $(TARGET)
+	@echo "  Signing with key: $(SB_KEY)"
+	$(SBSIGN) --key $(SB_KEY) --cert $(SB_CERT) --output $(TARGET) $(TARGET)
 	@echo ""
 	@echo "  Signed: $(TARGET)"
-	@echo "  Cert:   $(SB_CERT)$(if $(MOK_KEY), (MOK already enrolled), (must be enrolled in firmware db — see 'make enroll-info'))"
+	@echo "  Cert:   $(SB_CERT) (must be enrolled in firmware db — see 'make enroll-info')"
 	@echo ""
 
 # mokutil consumes a DER-encoded certificate; our cert is PEM, so convert it.
@@ -416,10 +385,10 @@ $(SB_DER): $(SB_CERT)
 # fresh one-time password, so this invocation needs no interactive prompt.
 enroll: $(SB_DER)
 	@command -v $(MOKUTIL) >/dev/null 2>&1 || { echo "Error: mokutil not found (install the 'mokutil' package)."; exit 1; }
-	$(SUDO) $(MOKUTIL) --import $(SB_DER) --root-pw
+	$(SUDO) $(MOKUTIL) --import $(SB_DER)
 	@echo ""
 	@echo "  Queued $(SB_DER) for MOK enrollment."
-	@echo "  Reboot now; in MokManager choose 'Enroll MOK' and enter the root password."
+	@echo "  Reboot now; in MokManager choose 'Enroll MOK' and enter the password you just set."
 	@echo ""
 
 # Show pending/enrolled MOK state.
@@ -555,10 +524,8 @@ qemusingle: disk
 # GRUB config. The privileged steps need root.
 #
 # Two supported ways to run it:
-#   sudo make install   # everything runs as root (so a root-only MOK is also
-#                        # detected and used); artifacts are chowned back after.
-#   make install        # build/sign as you; only the ESP/GRUB step escalates
-#                        # via sudo. Note: a root-only MOK won't be visible here.
+#   sudo make install   # everything runs as root; artifacts are chowned back after.
+#   make install        # build/sign as you; only the ESP/GRUB step escalates via sudo.
 install: check-toolchain $(SIGN_PRECHECK) $(TARGET) $(SIGN_DEP)
 ifeq ($(PLATFORM),windows)
 	@echo "Error: 'make install' is Linux-only."; exit 1
@@ -567,8 +534,8 @@ else
 	@# Under 'sudo make install' the build above ran as root and left root-owned
 	@# artifacts; hand them back so a later plain 'make' isn't blocked.
 	@if [ -n "$$SUDO_USER" ]; then \
-		chown -R "$$SUDO_USER" $(BUILDDIR) $(KEYDIR) 2>/dev/null || true; \
-		echo "  Restored ownership of $(BUILDDIR)/ and $(KEYDIR)/ to $$SUDO_USER."; \
+		chown -R "$$SUDO_USER" $(BUILDDIR) $(SB_KEYDIR) 2>/dev/null || true; \
+		echo "  Restored ownership of $(BUILDDIR)/ and $(SB_KEYDIR)/ to $$SUDO_USER."; \
 	fi
 endif
 
@@ -584,7 +551,9 @@ help:
 	@echo "  sudo make install Install to the EFI partition + add a GRUB entry (Linux)"
 	@echo "  make SIGN=0       Opt out of Secure Boot signing (signing is on by default)"
 	@echo "  make sign         Sign an already-built .efi in place"
-	@echo "  make keys         Generate the self-signed key/cert pair only"
+	@echo "  make keys         Generate the self-signed key/cert pair only (secureboot/)"
+	@echo "  make SB_KEY=x SB_CERT=y   Sign with explicit key/cert files"
+	@echo "  make SB_KEY_B64=x SB_CERT_B64=y   Sign with base64-encoded key/cert (CI use)"
 	@echo "  make enroll       Import the cert as a MOK (reboot to confirm in MokManager)"
 	@echo "  make enroll-status  Show pending/enrolled MOK certificates"
 	@echo "  make enroll-info  How Secure Boot enrollment works"
@@ -598,7 +567,7 @@ help:
 	@echo "  Objcopy:   $(OBJCOPY)"
 	@echo "  ISO tool:  $(if $(ISO_TOOL),$(ISO_TOOL),not found)"
 	@echo "  OVMF:      $(OVMF)"
-	@echo "  Sign:      $(if $(filter 1,$(SIGN)),enabled$(if $(MOK_KEY), (reusing enrolled $(MOK_SOURCE)), (self-signed: $(SB_CERT))),disabled)"
+	@echo "  Sign:      $(if $(filter 1,$(SIGN)),enabled (key: $(SB_KEY)),disabled)"
 	@echo ""
 	@echo "Override toolchain:"
 	@echo "  make CXX=clang++ LD=lld-link OBJCOPY=llvm-objcopy"

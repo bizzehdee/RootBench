@@ -28,23 +28,16 @@ jobs:
       - name: Build
         env:
           # Empty on forks / when the secret is unset -> falls back to unsigned.
-          SB_SIGNING_KEY_B64: ${{ secrets.SB_SIGNING_KEY_B64 }}
+          # SB_KEY_B64 is decoded by the Makefile; the cert lives in secureboot/.
+          SB_KEY_B64: ${{ secrets.SB_SIGNING_KEY_B64 }}
         run: |
-          if [ -n "$SB_SIGNING_KEY_B64" ] && [ -f secureboot/RootBench.crt ]; then
+          if [ -n "$SB_KEY_B64" ]; then
             echo "Signing release with the project Secure Boot key."
-            mkdir -p keys
-            printf '%s' "$SB_SIGNING_KEY_B64" | base64 -d > keys/ci-signing.key
-            chmod 600 keys/ci-signing.key
-            make iso VIDEO_BLT=1 SIGN=1 \
-              SB_KEY=keys/ci-signing.key SB_CERT=secureboot/RootBench.crt
+            make iso VIDEO_BLT=1 SIGN=1
           else
-            echo "No signing secret/cert present - building UNSIGNED."
+            echo "No signing secret present - building UNSIGNED."
             make iso VIDEO_BLT=1 SIGN=0
           fi
-
-      - name: Remove signing key
-        if: always()
-        run: rm -f keys/ci-signing.key
 
       - name: Extract version
         id: version

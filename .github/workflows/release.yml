@@ -22,10 +22,29 @@ jobs:
             llvm \
             mtools \
             dosfstools \
-            xorriso
+            xorriso \
+            sbsigntool
 
       - name: Build
-        run: make iso VIDEO_BLT=1 SIGN=0
+        env:
+          # Empty on forks / when the secret is unset -> falls back to unsigned.
+          SB_SIGNING_KEY_B64: ${{ secrets.SB_SIGNING_KEY_B64 }}
+        run: |
+          if [ -n "$SB_SIGNING_KEY_B64" ] && [ -f secureboot/RootBench.crt ]; then
+            echo "Signing release with the project Secure Boot key."
+            mkdir -p keys
+            printf '%s' "$SB_SIGNING_KEY_B64" | base64 -d > keys/ci-signing.key
+            chmod 600 keys/ci-signing.key
+            make iso VIDEO_BLT=1 SIGN=1 \
+              SB_KEY=keys/ci-signing.key SB_CERT=secureboot/RootBench.crt
+          else
+            echo "No signing secret/cert present - building UNSIGNED."
+            make iso VIDEO_BLT=1 SIGN=0
+          fi
+
+      - name: Remove signing key
+        if: always()
+        run: rm -f keys/ci-signing.key
 
       - name: Extract version
         id: version
@@ -37,7 +56,11 @@ jobs:
           name: "v${{ steps.version.outputs.version }}"
           token: ${{ secrets.RELEASE_PAT }}
           tag_name: ${{ github.ref_name }}
+          # The public cert/DER let users enrol the key to trust signed builds.
+          # Skipped automatically if absent (fail_on_unmatched_files defaults false).
           files: |
             Build/RootBench.efi
             Build/RootBench.iso
+            secureboot/RootBench.crt
+            secureboot/RootBench.der
           generate_release_notes: false

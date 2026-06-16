@@ -49,6 +49,15 @@ _deps/
 # Makefile generated
 Makefile.in
 
+# Secure Boot signing material — PRIVATE keys must never be committed.
+# The PUBLIC project certificate (secureboot/RootBench.crt / .der) IS committed;
+# only private keys and their base64 exports are ignored.
+keys/
+*.key
+*.priv
+*.key.b64
+secureboot/*.key
+
 # IDE / editor files
 .vscode/
 .idea/

@@ -6,8 +6,8 @@
 // to DRAM once it spills — the size at which it jumps reveals the L3 capacity.
 //
 // This is the test that separates otherwise-identical parts that differ only in
-// L3 size, e.g. Ryzen 7 5800X (32 MB L3) vs 5800X3D (96 MB V-Cache): at a 64 MB
-// working set the 5800X is in DRAM (~80-95 ns) while the 5800X3D is still in L3
+// L3 size, e.g. Ryzen 5950X (32 MB L3) vs 5950X3D (96 MB V-Cache): at a 64 MB
+// working set the 5950X is in DRAM (~80-95 ns) while the 5950X3D is still in L3
 // (~14-20 ns). Headline score is ns/access at 64 MB.
 
 #include "LongBenchmarkBase.h"
@@ -28,7 +28,7 @@ public:
     UINT64      GetScore() const override { return mHeadlineNs; }  // ns/access at the headline size
     const char* GetUnit()  const override { return "ns/access"; }
     // Cliff factor x10: latency(largest) / latency(smallest). ~70 (7.0x) on a
-    // 5800X, ~15 (1.5x) on a 5800X3D — a single-number summary of the cliff.
+    // 5950X, ~15 (1.5x) on a 5950X3D — a single-number summary of the cliff.
     UINT64      GetRawMetric() const override { return mCliffX10; }
     const char* GetRawUnit()   const override { return "cliff/10"; }
     const char* GetStatus()    const override { return mStatus[0] ? mStatus : nullptr; }

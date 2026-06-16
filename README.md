@@ -112,7 +112,7 @@ Exercises the **entire** memory subsystem — every test operates on essentially
 
 ### AI Readiness Suite
 
-Estimates how well the machine would run local AI / LLM inference. Every score is **normalised against a reference machine** — an **AMD Ryzen 7 5800X with 64 GB of DDR4-3200**, where each test scores **1000 points**. So 2000 means "twice the reference," 500 means "half." (~6 min at the default budget; adjustable per test from 1 min to 24 h.)
+Estimates how well the machine would run local AI / LLM inference. Every score is **normalised against a reference machine** — an **AMD Ryzen 5950X with 32 GB of DDR4-3800**, where each test scores **1000 points**. So 2000 means "twice the reference," 500 means "half." (~6 min at the default budget; adjustable per test from 1 min to 24 h.)
 
 | Test | What it measures | Score |
 |------|------------------|-------|

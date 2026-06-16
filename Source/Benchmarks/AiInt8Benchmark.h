@@ -2,7 +2,7 @@
 // AI INT8 GEMM throughput benchmark.
 // Measures sustained INT8 matrix multiply throughput across all cores.
 // Uses N=32 matrices (L1-resident per core). AVX2 path + scalar fallback.
-// Score: normalized AI pts (1000 = AMD Ryzen 7 5800X).
+// Score: normalized AI pts (1000 = AMD Ryzen 5950X).
 
 #include "LongBenchmarkBase.h"
 #include "RunConfig.h"

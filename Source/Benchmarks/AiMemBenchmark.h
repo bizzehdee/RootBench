@@ -1,7 +1,7 @@
 #pragma once
 // AI memory bandwidth benchmark.
 // Measures sequential read throughput across all RAM to simulate LLM weight streaming.
-// Multi-core, uses BigBuffer. Score: normalized AI pts (1000 = AMD Ryzen 7 5800X).
+// Multi-core, uses BigBuffer. Score: normalized AI pts (1000 = AMD Ryzen 5950X).
 
 #include "LongBenchmarkBase.h"
 #include "RunConfig.h"

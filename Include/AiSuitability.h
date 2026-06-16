@@ -7,7 +7,7 @@ namespace AiSuitability {
 
 enum class Tier : UINT32 {
     Limited   = 0,  // SSE4.2 / scalar only
-    Good      = 1,  // AVX2 + FMA  (e.g. Ryzen 5800X baseline)
+    Good      = 1,  // AVX2 + FMA  (e.g. Ryzen 5950X baseline)
     VeryGood  = 2,  // AVX2 + FMA + AVX-VNNI
     Excellent = 3,  // AVX-512F + AVX-512VNNI
 };
@@ -51,7 +51,7 @@ inline const char* TierSummary(Tier t) {
                    "efficient FP32 attention computation.";
         case Tier::Good:
             return "AVX2 + FMA supports efficient INT8 inference via MADDUBS/MADD and "
-                   "FP32 attention via vectorised FMA. This is the Ryzen 7 5800X baseline "
+                   "FP32 attention via vectorised FMA. This is the Ryzen 5950X baseline "
                    "against which AI scores are calibrated (1000 AI pts).";
         default:
             return "No AVX2 detected. INT8 inference falls back to scalar loops; "

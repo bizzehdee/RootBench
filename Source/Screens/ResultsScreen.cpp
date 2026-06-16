@@ -65,7 +65,7 @@ void ResultsScreen::OnEnter(Tui& tui) {
             PadAt(line,  2, lbl, 22);
             PadAt(line, 73, UintToStr(r.SweepValue[s]), 11);
             PadAt(line, 84, "ns/acc", 9);
-            // Highlight the 64 MB working set — the 5800X-vs-5800X3D discriminator.
+            // Highlight the 64 MB working set — the 5950X-vs-5950X3D discriminator.
             lineColor = (r.SweepSizeMB[s] == 64)
                             ? Theme::Current().Accent : Theme::Current().TextDim;
         } else if (dr.coreIdx < 0) {

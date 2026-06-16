@@ -2,7 +2,7 @@
 // AI cache hierarchy benchmark.
 // Pointer-chase through 4 working-set sizes (L1/L2/L3/DRAM) to measure
 // cache-latency characteristics relevant to KV-cache and attention in LLMs.
-// Single-core. Score: normalized AI pts (1000 = AMD Ryzen 7 5800X).
+// Single-core. Score: normalized AI pts (1000 = AMD Ryzen 5950X).
 
 #include "LongBenchmarkBase.h"
 #include "RunConfig.h"

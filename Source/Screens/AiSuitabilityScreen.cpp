@@ -168,7 +168,7 @@ void AiSuitabilityScreen::OnEnter(Tui& tui) {
         for (const char* s = "  AI Score: "; *s; ++s) scoreLine[sp++] = *s;
         const char* sv = UintToStr(aiScore);
         for (int i = 0; sv[i] && sp < 95; ++i) scoreLine[sp++] = sv[i];
-        for (const char* s = " AI pts  (Ryzen 7 5800X baseline = 1000)"; *s && sp < 95; ++s)
+        for (const char* s = " AI pts  (Ryzen 5950X baseline = 1000)"; *s && sp < 95; ++s)
             scoreLine[sp++] = *s;
         scoreLine[sp] = '\0';
         vp.AddLine(scoreLine, Theme::Current().Accent);
@@ -180,7 +180,7 @@ void AiSuitabilityScreen::OnEnter(Tui& tui) {
     } else {
         vp.AddLine("  Run the AI Benchmark Suite for personalized estimates.", Theme::Current().TextDim);
         vp.AddLine();
-        vp.AddLine("  Reference (Ryzen 7 5800X = 1000 AI pts):", Theme::Current().TextDim);
+        vp.AddLine("  Reference (Ryzen 5950X = 1000 AI pts):", Theme::Current().TextDim);
 
         char refLine[64];
         auto AddRef = [&](const char* model, UINT32 refX10) {

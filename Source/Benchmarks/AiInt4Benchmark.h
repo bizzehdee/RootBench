@@ -2,7 +2,7 @@
 // AI INT4 packed GEMM throughput benchmark.
 // Simulates INT4-quantized weight loading by packing 2 int4 values per byte in matrix A.
 // Inner loop unpacks each row to INT8 before computing the dot product (AVX2 or scalar).
-// Score: normalized AI pts (1000 = AMD Ryzen 7 5800X).
+// Score: normalized AI pts (1000 = AMD Ryzen 5950X).
 
 #include "LongBenchmarkBase.h"
 #include "RunConfig.h"

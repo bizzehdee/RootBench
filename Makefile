@@ -78,18 +78,75 @@ PYTHON   ?= python3
 SELFCRC_TOOL := tools/patch_selfcrc.py
 MOKUTIL  ?= mokutil
 KEYDIR   ?= keys
-SB_KEY   ?= $(KEYDIR)/db.key
-SB_CERT  ?= $(KEYDIR)/db.crt
 SB_DER   ?= $(KEYDIR)/db.der
 SB_CN    ?= RootBench Secure Boot
 
 # mokutil needs root; use sudo automatically when not already root.
 SUDO := $(shell [ "$$(id -u)" = 0 ] 2>/dev/null || echo sudo)
 
+# ── Reuse an already-enrolled Machine Owner Key (MOK) ────────
+# To avoid generating + enrolling a second key just for RootBench, auto-detect a
+# MOK that is already enrolled on this machine and sign with it. Debian/Ubuntu
+# (shim/DKMS) and Fedora (akmods) standard locations are checked, in that order.
+# An explicit SB_KEY=... always wins over detection; USE_MOK=0 disables it.
+# sbsign needs a PEM certificate, so the MOK's DER cert is converted once into
+# $(KEYDIR)/mok.pem. The MOK private key is normally root-only, so the signing
+# step escalates via sudo when the current user cannot read it.
+USE_MOK ?= 1
+
+MOK_DEB_KEY  := /var/lib/shim-signed/mok/MOK.priv
+MOK_DEB_CERT := /var/lib/shim-signed/mok/MOK.der
+MOK_FED_KEY  := /etc/pki/akmods/private/private_key.priv
+MOK_FED_CERT := /etc/pki/akmods/certs/public_key.der
+
+# Detect only when the user has not explicitly chosen a signing key.
+ifeq ($(filter command line environment,$(origin SB_KEY)),)
+ifeq ($(USE_MOK),1)
+  # Detect off the certificate: it is the artifact we must convert, and it is
+  # usually more readable than the private key (whose directory is often
+  # root-only). The key is read at sign time, escalating via sudo if needed.
+  ifneq ($(wildcard $(MOK_DEB_CERT)),)
+    MOK_KEY      := $(MOK_DEB_KEY)
+    MOK_CERT_DER := $(MOK_DEB_CERT)
+    MOK_SOURCE   := Debian/Ubuntu shim MOK
+  else ifneq ($(wildcard $(MOK_FED_CERT)),)
+    MOK_KEY      := $(MOK_FED_KEY)
+    MOK_CERT_DER := $(MOK_FED_CERT)
+    MOK_SOURCE   := Fedora akmods MOK
+  endif
+endif
+endif
+
+ifdef MOK_KEY
+  # Sign with the already-enrolled MOK; convert its DER cert to PEM for sbsign.
+  SB_KEY    ?= $(MOK_KEY)
+  SB_CERT   ?= $(KEYDIR)/mok.pem
+  # Escalate signing only if the (usually root-only) private key isn't readable.
+  SIGN_SUDO := $(shell test -r $(MOK_KEY) 2>/dev/null || echo $(SUDO))
+  # The private key lives in a root-only dir we may not be able to stat, so it
+  # must NOT be a make prerequisite — sbsign reads it directly (under sudo).
+  SIGN_KEY_DEP := $(SB_CERT)
+else
+  # No enrolled MOK found: fall back to a self-signed pair generated in $(KEYDIR).
+  SB_KEY    ?= $(KEYDIR)/db.key
+  SB_CERT   ?= $(KEYDIR)/db.crt
+  SIGN_SUDO :=
+  SIGN_KEY_DEP := $(SB_KEY) $(SB_CERT)
+endif
+
+# 'make install' (Linux): vendor directory and filename on the EFI System
+# Partition. The default lands at <ESP>/EFI/RootBench/RootBenchX64.efi.
+INSTALL_SUBDIR ?= EFI/RootBench
+INSTALL_NAME   ?= RootBenchX64.efi
+
 ifeq ($(SIGN),1)
   SIGN_DEP := sign
+  # Pre-flight tool check, run before the compile so a missing signing tool is
+  # reported up front instead of after a full build + key generation.
+  SIGN_PRECHECK := check-sign-tools
 else
   SIGN_DEP :=
+  SIGN_PRECHECK :=
 endif
 
 # ── Directories ───────────────────────────────────────────────
@@ -228,9 +285,9 @@ ISO_TOOL := $(shell if command -v xorriso >/dev/null 2>&1; then echo xorriso; \
                    elif command -v mkisofs >/dev/null 2>&1; then echo mkisofs; fi)
 
 # ── Rules ─────────────────────────────────────────────────────
-.PHONY: all clean disk iso qemu qemusingle help check-toolchain check-iso-tools sign keys enroll enroll-info enroll-status
+.PHONY: all clean disk iso qemu qemusingle install help check-toolchain check-iso-tools check-sign-tools sign keys enroll enroll-info enroll-status
 
-all: check-toolchain $(TARGET) $(SIGN_DEP)
+all: check-toolchain $(SIGN_PRECHECK) $(TARGET) $(SIGN_DEP)
 
 $(BUILDDIR):
 	mkdir -p $(BUILDDIR)
@@ -300,6 +357,15 @@ endif
 $(KEYDIR):
 	mkdir -p $(KEYDIR)
 
+ifdef MOK_KEY
+# Reusing an enrolled MOK: its private key already exists; we only need to
+# convert the MOK's DER certificate to the PEM form sbsign expects.
+$(SB_CERT): $(MOK_CERT_DER) | $(KEYDIR)
+	@command -v $(OPENSSL) >/dev/null 2>&1 || { echo "Error: openssl not found (needed to convert the MOK cert)."; exit 1; }
+	$(OPENSSL) x509 -inform DER -in $(MOK_CERT_DER) -outform PEM -out $(SB_CERT)
+	@echo "  Reusing enrolled MOK ($(MOK_SOURCE)): $(MOK_KEY)"
+	@echo "  Converted MOK cert -> $(SB_CERT)"
+else
 # Generate a self-signed Secure Boot key/cert once, fully non-interactively.
 # -batch + -subj suppress all prompts; -nodes leaves the key unencrypted so
 # sbsign needs no passphrase.
@@ -313,20 +379,27 @@ $(SB_KEY): | $(KEYDIR)
 
 # The cert is produced alongside the key; this keeps it as a known prereq.
 $(SB_CERT): $(SB_KEY)
+endif
 
-keys: $(SB_KEY) $(SB_CERT)
+keys: $(SIGN_KEY_DEP)
 
 # Sign the built .efi in place with sbsign. Depends on $(TARGET) and the keys,
 # so the binary is always freshly built and the keys exist before signing.
-sign: $(TARGET) $(SB_KEY) $(SB_CERT)
+sign: $(TARGET) $(SIGN_KEY_DEP)
 	@command -v $(SBSIGN) >/dev/null 2>&1 || { echo "Error: sbsign not found."; \
 		echo "Install sbsigntools (Debian/Ubuntu: apt install sbsigntool;"; \
 		echo "Fedora: dnf install sbsigntools; Arch: pacman -S sbsigntools)."; \
 		exit 1; }
-	$(SBSIGN) --key $(SB_KEY) --cert $(SB_CERT) --output $(TARGET) $(TARGET)
+ifdef MOK_KEY
+	@echo "  Signing with already-enrolled MOK ($(MOK_SOURCE)): $(MOK_KEY)"
+else
+	@echo "  No enrolled MOK detected; signing with self-signed key: $(SB_KEY)"
+	@echo "  (enroll it with 'make enroll', or reuse a MOK via SB_KEY=.../SB_CERT=...)"
+endif
+	$(SIGN_SUDO) $(SBSIGN) --key $(SB_KEY) --cert $(SB_CERT) --output $(TARGET) $(TARGET)
 	@echo ""
 	@echo "  Signed: $(TARGET)"
-	@echo "  Cert:   $(SB_CERT)  (must be enrolled in firmware db — see 'make enroll-info')"
+	@echo "  Cert:   $(SB_CERT)$(if $(MOK_KEY), (MOK already enrolled), (must be enrolled in firmware db — see 'make enroll-info'))"
 	@echo ""
 
 # mokutil consumes a DER-encoded certificate; our cert is PEM, so convert it.
@@ -350,6 +423,7 @@ enroll: $(SB_DER)
 
 # Show pending/enrolled MOK state.
 enroll-status:
+	@command -v $(MOKUTIL) >/dev/null 2>&1 || { echo "Error: mokutil not found (install the 'mokutil' package)."; exit 1; }
 	@$(MOKUTIL) --list-new 2>/dev/null || true
 	@$(MOKUTIL) --list-enrolled 2>/dev/null || true
 
@@ -380,7 +454,7 @@ clean:
 # ── Bootable disk image ──────────────────────────────────────
 # Creates a 64 MB FAT32 image with the .efi at the standard boot path.
 # Requires: mtools (mmd, mcopy), dosfstools (mkfs.fat)
-disk: check-toolchain $(TARGET) $(SIGN_DEP)
+disk: check-toolchain $(SIGN_PRECHECK) $(TARGET) $(SIGN_DEP)
 	@echo "Creating FAT32 disk image..."
 	dd if=/dev/zero of=$(DISKIMG) bs=1M count=64 status=none
 	mkfs.fat -F 32 $(DISKIMG) >/dev/null
@@ -393,7 +467,22 @@ check-iso-tools:
 		echo "Install xorriso, genisoimage, or mkisofs to use 'make iso'."; \
 		exit 1; }
 
-$(EFIBOOTIMG): check-toolchain $(TARGET) $(SIGN_DEP) | $(BUILDDIR)
+# Pre-flight check for Secure Boot signing (SIGN=1). Reports every missing tool
+# at once with install hints and the opt-out, before the build does any work.
+check-sign-tools:
+	@missing=; \
+	command -v "$(SBSIGN)"  >/dev/null 2>&1 || missing="$$missing $(SBSIGN)"; \
+	command -v "$(OPENSSL)" >/dev/null 2>&1 || missing="$$missing $(OPENSSL)"; \
+	if [ -n "$$missing" ]; then \
+		echo "Error: Secure Boot signing is enabled (SIGN=1) but required tool(s) not found:$$missing"; \
+		echo "  Fedora:         sudo dnf install sbsigntools openssl"; \
+		echo "  Debian/Ubuntu:  sudo apt install sbsigntool openssl"; \
+		echo "  Arch:           sudo pacman -S sbsigntools openssl"; \
+		echo "Or build without signing:  make SIGN=0"; \
+		exit 1; \
+	fi
+
+$(EFIBOOTIMG): check-toolchain $(SIGN_PRECHECK) $(TARGET) $(SIGN_DEP) | $(BUILDDIR)
 	@echo "Creating EFI boot image..."
 	dd if=/dev/zero of=$(EFIBOOTIMG) bs=1M count=4 status=none
 	mkfs.fat $(EFIBOOTIMG) >/dev/null
@@ -459,6 +548,29 @@ qemusingle: disk
 		-net none \
 		-serial stdio
 
+# ── Install to the EFI System Partition (Linux) ──────────────
+# Builds (and signs, unless SIGN=0) the .efi, copies it to the ESP under
+# $(INSTALL_SUBDIR), registers a GRUB chainloader entry, and regenerates the
+# GRUB config. The privileged steps need root.
+#
+# Two supported ways to run it:
+#   sudo make install   # everything runs as root (so a root-only MOK is also
+#                        # detected and used); artifacts are chowned back after.
+#   make install        # build/sign as you; only the ESP/GRUB step escalates
+#                        # via sudo. Note: a root-only MOK won't be visible here.
+install: check-toolchain $(SIGN_PRECHECK) $(TARGET) $(SIGN_DEP)
+ifeq ($(PLATFORM),windows)
+	@echo "Error: 'make install' is Linux-only."; exit 1
+else
+	$(SUDO) bash tools/install.sh "$(TARGET)" "$(INSTALL_SUBDIR)" "$(INSTALL_NAME)"
+	@# Under 'sudo make install' the build above ran as root and left root-owned
+	@# artifacts; hand them back so a later plain 'make' isn't blocked.
+	@if [ -n "$$SUDO_USER" ]; then \
+		chown -R "$$SUDO_USER" $(BUILDDIR) $(KEYDIR) 2>/dev/null || true; \
+		echo "  Restored ownership of $(BUILDDIR)/ and $(KEYDIR)/ to $$SUDO_USER."; \
+	fi
+endif
+
 # ── Help ──────────────────────────────────────────────────────
 help:
 	@echo "RootBench build targets:"
@@ -468,6 +580,7 @@ help:
 	@echo "  make iso          Build + create bootable UEFI ISO image"
 	@echo "  make qemu         Build + boot in QEMU with 4 cores (requires OVMF + mtools)"
 	@echo "  make qemusingle   Build + boot in QEMU with 1 core"
+	@echo "  sudo make install Install to the EFI partition + add a GRUB entry (Linux)"
 	@echo "  make SIGN=0       Opt out of Secure Boot signing (signing is on by default)"
 	@echo "  make sign         Sign an already-built .efi in place"
 	@echo "  make keys         Generate the self-signed key/cert pair only"
@@ -484,7 +597,7 @@ help:
 	@echo "  Objcopy:   $(OBJCOPY)"
 	@echo "  ISO tool:  $(if $(ISO_TOOL),$(ISO_TOOL),not found)"
 	@echo "  OVMF:      $(OVMF)"
-	@echo "  Sign:      $(if $(filter 1,$(SIGN)),enabled (cert: $(SB_CERT)),disabled)"
+	@echo "  Sign:      $(if $(filter 1,$(SIGN)),enabled$(if $(MOK_KEY), (reusing enrolled $(MOK_SOURCE)), (self-signed: $(SB_CERT))),disabled)"
 	@echo ""
 	@echo "Override toolchain:"
 	@echo "  make CXX=clang++ LD=lld-link OBJCOPY=llvm-objcopy"

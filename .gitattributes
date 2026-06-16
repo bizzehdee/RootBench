@@ -1,0 +1,6 @@
+# Shell scripts must stay LF — they run on Linux even though this repo is often
+# developed on Windows (core.autocrlf would otherwise check them out as CRLF and
+# break the shebang / heredocs).
+*.sh    text eol=lf
+*.py    text eol=lf
+Makefile text eol=lf

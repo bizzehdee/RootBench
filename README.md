@@ -21,7 +21,7 @@ Download the latest release — you get two files:
 | `RootBench.efi` | USB stick, Ventoy, or VM (the raw UEFI application) |
 | `RootBench.iso` | Bootable disc image for Ventoy, VMs, or burning |
 
-> The released files are **unsigned**, so you must **disable Secure Boot** in your firmware before booting them. If you want to keep Secure Boot enabled, see [Building & Signing Your Own](#building--signing-your-own).
+> **As of v0.5, release images are signed with the RootBench Secure Boot certificate.** You can boot with Secure Boot enabled once you enrol the certificate — see [Enrolling the Secure Boot Certificate](#enrolling-the-secure-boot-certificate) below. If you prefer not to enrol it, disable Secure Boot in your firmware instead.
 
 ### 2. Boot it
 
@@ -55,7 +55,7 @@ Attach `RootBench.iso` to any **UEFI-capable** VM (VirtualBox, VMware, Hyper-V, 
 
 ### 3. Don't forget
 
-- **Secure Boot must be off** for the prebuilt files.
+- Release images are **signed** (v0.5+). Either enrol the certificate (see below) or disable Secure Boot in firmware.
 - Memory tests grab almost all of your RAM — close nothing, there's no OS, but expect the machine to be fully dedicated to the benchmark while it runs.
 - To exit, reboot the machine (there's no OS to return to).
 
@@ -224,11 +224,57 @@ You need known, reproducible, comparable metrics.
 
 ---
 
+## Enrolling the Secure Boot Certificate
+
+Release images (v0.5+) are signed with a dedicated RootBench key. To boot them with Secure Boot enabled, enrol the public certificate into your firmware once. The certificate files are in the [`secureboot/`](secureboot/) directory of this repository and are also attached to each release.
+
+You need **`RootBench.der`** (the DER-encoded certificate) from the `secureboot/` directory or the release assets.
+
+### Linux (MOK — recommended)
+
+MOK (Machine Owner Key) lets you add a trusted certificate without touching the firmware `db` directly. Your distro's shim handles it at boot time.
+
+```bash
+# 1. Queue the certificate for import
+sudo mokutil --import RootBench.der
+#    You will be prompted to set a one-time enrollment password.
+
+# 2. Reboot. The blue MokManager screen appears automatically.
+#    Choose "Enroll MOK" → "Continue" → enter the password you just set → "Yes".
+
+# 3. The machine reboots into your OS. Signed RootBench images will now boot
+#    with Secure Boot enabled.
+```
+
+To verify enrollment afterwards:
+
+```bash
+sudo mokutil --list-enrolled | grep -A4 RootBench
+```
+
+### Windows (firmware `db` via UEFI setup)
+
+Windows does not include a MOK shim, so the certificate must be imported directly into the firmware Secure Boot database through your motherboard's UEFI setup.
+
+1. Copy `RootBench.der` to a **FAT32 USB drive** (the firmware can only read FAT32).
+2. Reboot and enter your UEFI setup (typically **Del / F2 / F10** during POST).
+3. Navigate to **Secure Boot** settings. The exact path varies by vendor:
+   - **ASUS**: Secure Boot → Key Management → Authorized Signatures → Append from Storage
+   - **MSI**: Settings → Security → Secure Boot → Key Management → DB Management → Append
+   - **Gigabyte**: Peripherals / MIT → Secure Boot → Key Management → Authorized Signatures → Append
+   - **ASRock**: Security → Secure Boot → Key Management → db → Append
+4. Browse to `RootBench.der` on the USB drive and confirm the import.
+5. Save and exit. Signed RootBench images will now boot with Secure Boot enabled.
+
+> If your firmware only offers "Reset to Setup Mode" or you cannot find the key management screen, put the firmware into **Setup Mode** first, then import the certificate.
+
+---
+
 ## Building & Signing Your Own
 
-You only need this if you want to **keep Secure Boot enabled** (the prebuilt downloads are unsigned), or build from source.
+You only need this if you want to build from source or sign with your own key.
 
-The build process can sign the `.efi` automatically with your own key, but **signing alone isn't enough** — your certificate also has to be *enrolled* into the firmware so it trusts the binary.
+The build process can sign the `.efi` automatically with your own key, but **signing alone isn't enough** — your certificate also has to be *enrolled* into the firmware so it trusts the binary. If you just want to boot the official signed release, enrol the project certificate instead (see above).
 
 ### Build + sign
 
@@ -254,7 +300,7 @@ On first build a self-signed key/cert pair is generated automatically (no passph
 make SB_KEY=/path/to/db.key SB_CERT=/path/to/db.crt
 ```
 
-To build **unsigned** (the same as the downloads):
+To build **unsigned**:
 
 ```bash
 make SIGN=0

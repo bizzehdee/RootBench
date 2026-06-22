@@ -39,6 +39,14 @@
 #include "Benchmarks/StressCpuPowerBenchmark.h"
 #include "Benchmarks/StressCpuVerifyBenchmark.h"
 
+// Gaming benchmarks
+#include "Benchmarks/GamePhysicsBenchmark.h"
+#include "Benchmarks/GameEntityBenchmark.h"
+#include "Benchmarks/GameFrustumBenchmark.h"
+#include "Benchmarks/GameNoiseBenchmark.h"
+#include "Benchmarks/GameParticleBenchmark.h"
+#include "Benchmarks/GameRaycastBenchmark.h"
+
 // The TUI controller embeds every screen's scroll viewport (~180 KB total), so
 // it must live in static (.bss) storage, not on EfiMain's stack (a frame that
 // large would overflow the UEFI boot stack / pull in __chkstk).
@@ -198,6 +206,14 @@ extern "C" EFI_STATUS EFIAPI EfiMain(
     StressCpuPowerBenchmark   stressCpuPower;
     StressCpuVerifyBenchmark  stressCpuVerify;
 
+    // Gaming benchmarks
+    GamePhysicsBenchmark  gamePhysics;
+    GameEntityBenchmark   gameEntity;
+    GameFrustumBenchmark  gameFrustum;
+    GameNoiseBenchmark    gameNoise;
+    GameParticleBenchmark gameParticle;
+    GameRaycastBenchmark  gameRaycast;
+
     // Register long CPU
     BenchmarkRegistry::Register(&intThroughput);
     BenchmarkRegistry::Register(&intLatency);
@@ -227,6 +243,14 @@ extern "C" EFI_STATUS EFIAPI EfiMain(
     BenchmarkRegistry::Register(&stressMemLatency);
     BenchmarkRegistry::Register(&stressCpuPower);
     BenchmarkRegistry::Register(&stressCpuVerify);
+
+    // Register gaming benchmarks
+    BenchmarkRegistry::Register(&gamePhysics);
+    BenchmarkRegistry::Register(&gameEntity);
+    BenchmarkRegistry::Register(&gameFrustum);
+    BenchmarkRegistry::Register(&gameNoise);
+    BenchmarkRegistry::Register(&gameParticle);
+    BenchmarkRegistry::Register(&gameRaycast);
 
     if (gopOk) {
         char msg[64];

@@ -178,6 +178,12 @@ SOURCES  = \
 	$(BMDIR)/StressMemLatencyBenchmark.cpp \
 	$(BMDIR)/StressCpuPowerBenchmark.cpp \
 	$(BMDIR)/StressCpuVerifyBenchmark.cpp \
+	$(BMDIR)/GamePhysicsBenchmark.cpp \
+	$(BMDIR)/GameEntityBenchmark.cpp \
+	$(BMDIR)/GameFrustumBenchmark.cpp \
+	$(BMDIR)/GameNoiseBenchmark.cpp \
+	$(BMDIR)/GameParticleBenchmark.cpp \
+	$(BMDIR)/GameRaycastBenchmark.cpp \
 	$(SRCDIR)/Main.cpp
 
 OBJECTS  = $(patsubst %.cpp,$(BUILDDIR)/%.o,$(notdir $(SOURCES)))

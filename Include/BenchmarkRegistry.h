@@ -19,7 +19,7 @@ public:
                                                  IBenchmark** out, UINT32 maxCount);
 
 private:
-    static constexpr UINTN MAX_BENCHMARKS = 32;
+    static constexpr UINTN MAX_BENCHMARKS = 48;
     static IBenchmark* sBenchmarks[MAX_BENCHMARKS];
     static UINTN       sCount;
 };

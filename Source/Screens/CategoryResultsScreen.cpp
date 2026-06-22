@@ -6,6 +6,7 @@
 #include "BenchmarkResult.h"
 #include "Statistics.h"
 #include "AiScore.h"
+#include "GameScore.h"
 #include "Freestanding.h"
 
 namespace {
@@ -154,6 +155,35 @@ void CategoryResultsScreen::Build(Tui& tui) {
                 mVp.AddLine(ln, Theme::Current().TextDim);
             }
             mVp.AddLine(Ui::Concat3("  Composite: ", UintToStr(composite), " AI pts"),
+                        Theme::Current().TextDim);
+            }  // mShowCalibration
+        }
+
+        if (StrCmp(category, "Gaming") == 0) {
+            // ── Calibration readout (hidden — toggle with the 'C' key) ────
+            // Shows the raw metric (pre-normalisation) for each Gaming benchmark.
+            // Update each GAME_REF_* in GameScore.h to match these values on
+            // the reference hardware (AMD Ryzen 9 5950X), then bump GAME_SCORE_VERSION.
+            if (mShowCalibration) {
+            mVp.AddLine();
+            mVp.AddLine("  -- Calibration (set GAME_REF_* to raw values on 5950X) --",
+                        Theme::Current().TextDim);
+            mVp.AddLine(Ui::Concat2("  GAME_SCORE_VERSION: ", UintToStr(GAME_SCORE_VERSION)),
+                        Theme::Current().TextDim);
+            for (UINTN i = 0; i < results.Size(); ++i) {
+                auto& rr = results[i];
+                if (StrCmp(rr.Category, "Gaming") != 0 || rr.RawMetric == 0) continue;
+                char ln[ScrollViewport::MAX_WIDTH];
+                for (int k = 0; k < ScrollViewport::MAX_WIDTH - 1; ++k) ln[k] = ' ';
+                ln[ScrollViewport::MAX_WIDTH - 1] = '\0';
+                PadAt(ln,  4, rr.Name,                  26);
+                PadAt(ln, 30, UintToStr(rr.RawMetric),  12);
+                PadAt(ln, 42, rr.RawUnit,               12);
+                PadAt(ln, 54, UintToStr(rr.Score),       8);
+                PadAt(ln, 62, "GAME pts",                9);
+                mVp.AddLine(ln, Theme::Current().TextDim);
+            }
+            mVp.AddLine(Ui::Concat3("  Composite: ", UintToStr(composite), " GAME pts"),
                         Theme::Current().TextDim);
             }  // mShowCalibration
         }
